@@ -1,0 +1,7 @@
+{
+    "id": "exp_003",
+    "hypothesis": "Replace layers 0-2 with Mamba SSM blocks. SSM handles local pattern extraction faster than attention (O(n) vs O(n\u00b2)), enabling more training steps in 10 min. Layers 0-2 are never looped, making this the safest replacement point.",
+    "technique_stack": ["ssm_mamba", "depth_recurrence", "parallel_residuals", "qk_gain", "xsa", "skip_gates", "ema", "muon_eq_r", "gptq", "brotli", "ttt"],
+    "parent_id": "exp_002",
+    "base_bpb": "1.0810 (SOTA on 8xH100)"
+}
