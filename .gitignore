@@ -1,0 +1,10 @@
+pgolf.db
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+experiments/*/train.log
+experiments/*/*.pt
+experiments/*/*.bin
+parameter-golf/
+.DS_Store

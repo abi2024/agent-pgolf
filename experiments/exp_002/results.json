@@ -1,0 +1,43 @@
+{
+    "run_id": "sota_local",
+    "seed": 1337,
+    "gpu": "1xGTX3060",
+    "iterations": 500,
+    "train_batch_tokens": 16384,
+    "train_seq_len": 1024,
+    "vocab_size": 1024,
+    "model_params": 32274520,
+    "training": {
+        "final_train_loss": 2.9208,
+        "mid_train_val_loss": 2.9216,
+        "mid_train_val_bpb": 1.7303,
+        "training_time_minutes": 12.4,
+        "tok_per_sec_before_loop": 14433,
+        "tok_per_sec_after_loop": 10996,
+        "loop_activated_at_step": 175,
+        "loop_speed_cost_pct": 24
+    },
+    "post_ema": {
+        "val_loss": 3.4750,
+        "val_bpb": 2.0581,
+        "ema_degradation_bpb": 0.3278
+    },
+    "post_quantization": {
+        "val_loss": 3.4805,
+        "val_bpb": 2.0613,
+        "quantization_cost_bpb": 0.0032,
+        "artifact_bytes": 13858112,
+        "artifact_mb": 13.86,
+        "under_16mb": true,
+        "quantization_scheme": "int6 weights, int8 embeddings, brotli-11"
+    },
+    "sliding_window": "killed - too slow locally",
+    "peak_memory_mib": 6549,
+    "notes": [
+        "EMA degradation of 0.328 BPB confirms Day 2 blog finding on SOTA architecture",
+        "GPTQ quantization cost only 0.003 BPB - excellent",
+        "Loop activation caused 24% speed drop but enables 17 virtual layers from 11 physical",
+        "SP1024 tokenizer (not SP8192) so absolute BPB not comparable to leaderboard",
+        "Sliding window eval too slow on GTX 3060 without torch.compile - killed after 6 hours"
+    ]
+}
