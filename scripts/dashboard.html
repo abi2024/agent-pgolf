@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parameter Golf — Experiment Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0C0C0B;
+  --bg-card: #161614;
+  --bg-card-hover: #1E1E1B;
+  --border: #2A2A26;
+  --text: #D4D2C8;
+  --text-muted: #7A7870;
+  --text-bright: #F0EEE4;
+  --accent: #D4A853;
+  --accent-dim: #8B7235;
+  --green: #5CB85C;
+  --green-bg: #1A2E1A;
+  --red: #D9534F;
+  --red-bg: #2E1A1A;
+  --blue: #5BC0DE;
+  --blue-bg: #1A2A2E;
+  --amber: #D4A853;
+  --amber-bg: #2E2A1A;
+  --mono: 'IBM Plex Mono', monospace;
+  --display: 'Anybody', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.topbar-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.topbar-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.topbar-meta span { color: var(--accent); font-weight: 600; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  margin-bottom: 1px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  padding: 16px 20px;
+}
+
+.stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 28px;
+  color: var(--text-bright);
+}
+
+.stat-value.green { color: var(--green); }
+.stat-value.red { color: var(--red); }
+.stat-value.amber { color: var(--amber); }
+.stat-value.blue { color: var(--blue); }
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.section {
+  border-bottom: 1px solid var(--border);
+}
+
+.section-header {
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-tag {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 8px 16px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+thead th.right { text-align: right; }
+
+tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  background: var(--bg-card);
+}
+
+tbody td.right { text-align: right; }
+
+tbody tr:hover td {
+  background: var(--bg-card-hover);
+}
+
+.exp-id {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-blue { background: var(--blue-bg); color: var(--blue); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+.badge-muted { background: var(--border); color: var(--text-muted); }
+
+.bpb-val {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-bright);
+}
+
+.delta-good { color: var(--green); }
+.delta-bad { color: var(--red); }
+.delta-neutral { color: var(--text-muted); }
+
+.bar-cell { position: relative; }
+
+.bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  opacity: 0.12;
+  border-radius: 0 2px 2px 0;
+}
+
+.bar-green { background: var(--green); }
+.bar-amber { background: var(--amber); }
+.bar-red { background: var(--red); }
+.bar-blue { background: var(--blue); }
+
+.milestone-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px 90px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  align-items: center;
+  gap: 16px;
+}
+
+.milestone-row:hover { background: var(--bg-card-hover); }
+
+.m-id {
+  font-weight: 800;
+  font-family: var(--display);
+  font-size: 16px;
+}
+
+.m-id.done { color: var(--green); }
+.m-id.active { color: var(--accent); }
+.m-id.pending { color: var(--text-muted); }
+
+.m-desc { color: var(--text); }
+.m-desc small { color: var(--text-muted); display: block; font-size: 11px; }
+
+.m-cost {
+  text-align: right;
+  font-weight: 600;
+}
+
+.progress-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.progress-fill.green { background: var(--green); }
+.progress-fill.amber { background: var(--amber); }
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.two-col > :first-child {
+  border-right: 1px solid var(--border);
+}
+
+.notes-area {
+  padding: 16px 24px;
+  background: var(--bg-card);
+}
+
+.note {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+}
+
+.note:last-child { border-bottom: none; }
+
+.note-time {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.note-text { color: var(--text); }
+.note-text strong { color: var(--accent); font-weight: 600; }
+
+.footer {
+  padding: 12px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+
+.footer a { color: var(--accent); text-decoration: none; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+  .two-col > :first-child { border-right: none; border-bottom: 1px solid var(--border); }
+  .milestone-row { grid-template-columns: 60px 1fr 80px; }
+  .milestone-row > :last-child { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">⛳ Parameter Golf — SSM Hybrid</div>
+  <div class="topbar-meta">
+    SOTA: <span>1.0810</span> BPB &nbsp;|&nbsp;
+    Deadline: <span>Apr 30</span> &nbsp;|&nbsp;
+    Budget: <span>$450</span> &nbsp;|&nbsp;
+    Days left: <span id="days-left"></span>
+  </div>
+</div>
+
+<!-- KPI Strip -->
+<div class="grid">
+  <div class="stat-card">
+    <div class="stat-label">Best BPB (1xH100)</div>
+    <div class="stat-value amber" id="best-bpb">—</div>
+    <div class="stat-sub" id="best-bpb-sub">No H100 runs yet</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">SSM vs Baseline Delta</div>
+    <div class="stat-value" id="delta-bpb">—</div>
+    <div class="stat-sub" id="delta-sub">Awaiting comparison</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Budget Spent</div>
+    <div class="stat-value green" id="budget-spent">$0</div>
+    <div class="stat-sub" id="budget-sub">$450 remaining</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Experiments</div>
+    <div class="stat-value blue" id="total-exps">5</div>
+    <div class="stat-sub">3 local, 0 RunPod</div>
+  </div>
+</div>
+
+<!-- Experiment Results Table -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-tag">Data</div>
+    <div class="section-title">All Experiments</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Hypothesis</th>
+        <th>GPU</th>
+        <th>Architecture</th>
+        <th class="right">Steps</th>
+        <th class="right">tok/s</th>
+        <th class="right">Mid-train BPB</th>
+        <th class="right">Final BPB</th>
+        <th class="right">Size</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="exp-table-body">
+    </tbody>
+  </table>
+</div>
+
+<!-- Two Column: Speed + Milestones -->
+<div class="two-col section">
+  <!-- Speed Comparison -->
+  <div>
+    <div class="section-header">
+      <div class="section-tag">Speed</div>
+      <div class="section-title">tok/s Comparison</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Config</th>
+          <th class="right">tok/s</th>
+          <th>Relative</th>
+        </tr>
+      </thead>
+      <tbody id="speed-table-body">
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Milestones -->
+  <div>
+    <div class="section-header">
+      <div class="section-tag">Plan</div>
+      <div class="section-title">Milestone Progress</div>
+    </div>
+    <div id="milestone-list">
+    </div>
+  </div>
+</div>
+
+<!-- Decision Log -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-tag">Log</div>
+    <div class="section-title">Decision Log</div>
+  </div>
+  <div class="notes-area" id="decision-log">
+  </div>
+</div>
+
+<div class="footer">
+  Parameter Golf SSM Hybrid Experiment Dashboard &nbsp;|&nbsp;
+  <a href="https://github.com/openai/parameter-golf">Competition Repo</a> &nbsp;|&nbsp;
+  Last updated: <span id="last-updated"></span>
+</div>
+
+<script>
+// ============================================================
+// ALL EXPERIMENT DATA — UPDATE THIS SECTION AFTER EACH RUN
+// ============================================================
+const DATA = {
+  budget_total: 450,
+  budget_spent: 0,
+  last_updated: "2026-04-15T23:00:00Z",
+
+  experiments: [
+    {
+      id: "exp_001",
+      hypothesis: "Baseline smoke test",
+      gpu: "GTX 3060",
+      arch: "Transformer",
+      ssm_layers: 0,
+      steps: 200,
+      tok_s: null,
+      mid_train_bpb: null,
+      final_bpb: 2.44,
+      artifact_mb: null,
+      seed: 1337,
+      status: "done",
+      notes: "Simple baseline. Verified code runs locally."
+    },
+    {
+      id: "exp_002a",
+      hypothesis: "SOTA smoke test (NaN batch)",
+      gpu: "GTX 3060",
+      arch: "Transformer",
+      ssm_layers: 0,
+      steps: 200,
+      tok_s: null,
+      mid_train_bpb: null,
+      final_bpb: 4.1086,
+      artifact_mb: null,
+      seed: 1337,
+      status: "done",
+      notes: "NaN training loss due to micro-batch < 1 sequence. Pipeline verified."
+    },
+    {
+      id: "exp_002b",
+      hypothesis: "Full SOTA, 500 steps, SP1024",
+      gpu: "GTX 3060",
+      arch: "Transformer",
+      ssm_layers: 0,
+      steps: 500,
+      tok_s: 10996,
+      tok_s_pre_loop: 14433,
+      mid_train_bpb: 1.7303,
+      final_bpb: 2.0613,
+      post_ema_bpb: 2.0581,
+      artifact_mb: 13.86,
+      seed: 1337,
+      status: "done",
+      notes: "EMA degradation +0.328 BPB. GPTQ cost 0.003 BPB. Loop speed cost 24%."
+    },
+    // ---- RUNPOD EXPERIMENTS GO BELOW ----
+    // {
+    //   id: "exp_002_h100_s42",
+    //   hypothesis: "SOTA baseline on H100",
+    //   gpu: "1xH100",
+    //   arch: "Transformer",
+    //   ssm_layers: 0,
+    //   steps: null,
+    //   tok_s: null,
+    //   mid_train_bpb: null,
+    //   final_bpb: null,
+    //   artifact_mb: null,
+    //   seed: 42,
+    //   status: "pending",
+    //   notes: "M1 baseline run"
+    // },
+    // {
+    //   id: "exp_003_h100_s42",
+    //   hypothesis: "SSM hybrid: 3 Mamba layers (0-2)",
+    //   gpu: "1xH100",
+    //   arch: "SSM Hybrid",
+    //   ssm_layers: 3,
+    //   steps: null,
+    //   tok_s: null,
+    //   mid_train_bpb: null,
+    //   final_bpb: null,
+    //   artifact_mb: null,
+    //   seed: 42,
+    //   status: "pending",
+    //   notes: "M3 first SSM training run"
+    // },
+  ],
+
+  speed_benchmarks: [
+    { config: "Pre-loop (layers 0-10, no recurrence)", tok_s: 14433, gpu: "GTX 3060" },
+    { config: "Post-loop (layers 0-10, 3x recurrence)", tok_s: 10996, gpu: "GTX 3060" },
+    // { config: "Baseline (transformer)", tok_s: null, gpu: "1xH100" },
+    // { config: "SSM Hybrid (3 Mamba layers)", tok_s: null, gpu: "1xH100" },
+    // { config: "Mamba block only (micro-bench)", tok_s: null, gpu: "1xH100" },
+    // { config: "Attn+MLP block only (micro-bench)", tok_s: null, gpu: "1xH100" },
+  ],
+
+  milestones: [
+    { id: "M0", name: "Pre-flight", desc: "Code review, blog, push to GitHub", cost: 0, status: "done", progress: 100 },
+    { id: "M1", name: "Environment + Baseline", desc: "RunPod setup, SP8192, 3-seed baseline", cost: 15, status: "active", progress: 0 },
+    { id: "M2", name: "SSM Verification", desc: "Crash test, SSM_LAYERS=0 sanity", cost: 10, status: "pending", progress: 0 },
+    { id: "M3", name: "First SSM Training", desc: "Full 10-min run, proceed/pivot decision", cost: 15, status: "pending", progress: 0 },
+    { id: "M4", name: "Ablation Grid", desc: "Layer count, d_state, expand sweeps", cost: 60, status: "pending", progress: 0 },
+    { id: "M5", name: "Optimization", desc: "Quantization, LR, EMA tuning", cost: 80, status: "pending", progress: 0 },
+    { id: "M6", name: "8xH100 Validation", desc: "Competition-scale 3-seed runs", cost: 80, status: "pending", progress: 0 },
+    { id: "M7", name: "Submission", desc: "PR to openai/parameter-golf", cost: 15, status: "pending", progress: 0 },
+  ],
+
+  decisions: [
+    { time: "Day 0", text: "Chose <strong>activation × quantization</strong> as research question. Ran 19 experiments." },
+    { time: "Day 1", text: "Discovered <strong>EMA degradation</strong> is 92% of 1-GPU roundtrip BPB. Reversed LeakyReLU finding." },
+    { time: "Day 2", text: "Caught <strong>math error</strong> (off by 500×) that saved $45. Fixed methodology." },
+    { time: "Day 3", text: "Decompressed SOTA. Found <strong>24% loop speed cost</strong>. Pivoted to <strong>SSM hybrid</strong> hypothesis." },
+    { time: "Day 3", text: "Wrote SSM code. Claude Code applied 5 fixes: x0 connection, GPTQ safety, optimizer separation." },
+    { time: "Day 3", text: "Next: <strong>RunPod M1</strong>. Speed benchmark Mamba vs attention before committing." },
+  ]
+};
+
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
+
+function init() {
+  const deadline = new Date('2026-04-30T23:59:59Z');
+  const now = new Date();
+  const days = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+  document.getElementById('days-left').textContent = days;
+  document.getElementById('last-updated').textContent = new Date(DATA.last_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  renderKPIs();
+  renderExperiments();
+  renderSpeed();
+  renderMilestones();
+  renderDecisions();
+}
+
+function renderKPIs() {
+  const h100Exps = DATA.experiments.filter(e => e.gpu.includes('H100') && e.final_bpb);
+  const bestH100 = h100Exps.length ? Math.min(...h100Exps.map(e => e.final_bpb)) : null;
+  const el = document.getElementById('best-bpb');
+  const sub = document.getElementById('best-bpb-sub');
+
+  if (bestH100) {
+    el.textContent = bestH100.toFixed(4);
+    sub.textContent = `Gap to SOTA: +${(bestH100 - 1.0810).toFixed(4)}`;
+  }
+
+  // Delta
+  const baselines = DATA.experiments.filter(e => e.ssm_layers === 0 && e.gpu.includes('H100') && e.final_bpb);
+  const ssms = DATA.experiments.filter(e => e.ssm_layers > 0 && e.gpu.includes('H100') && e.final_bpb);
+  const deltaEl = document.getElementById('delta-bpb');
+  const deltaSub = document.getElementById('delta-sub');
+
+  if (baselines.length && ssms.length) {
+    const baseAvg = baselines.reduce((s, e) => s + e.final_bpb, 0) / baselines.length;
+    const ssmAvg = ssms.reduce((s, e) => s + e.final_bpb, 0) / ssms.length;
+    const d = ssmAvg - baseAvg;
+    deltaEl.textContent = (d > 0 ? '+' : '') + d.toFixed(4);
+    deltaEl.className = 'stat-value ' + (d < 0 ? 'green' : d > 0 ? 'red' : '');
+    deltaSub.textContent = d < 0 ? 'SSM is better' : d > 0 ? 'Baseline is better' : 'No difference';
+  }
+
+  // Budget
+  document.getElementById('budget-spent').textContent = '$' + DATA.budget_spent;
+  document.getElementById('budget-sub').textContent = '$' + (DATA.budget_total - DATA.budget_spent) + ' remaining';
+
+  // Count
+  const done = DATA.experiments.filter(e => e.status === 'done').length;
+  document.getElementById('total-exps').textContent = done;
+}
+
+function renderExperiments() {
+  const tbody = document.getElementById('exp-table-body');
+  tbody.innerHTML = DATA.experiments.map(e => {
+    const statusBadge = e.status === 'done' ? 'badge-green'
+      : e.status === 'running' ? 'badge-amber'
+      : e.status === 'failed' ? 'badge-red'
+      : 'badge-muted';
+    const archBadge = e.ssm_layers > 0 ? 'badge-blue' : 'badge-muted';
+
+    return `<tr>
+      <td><span class="exp-id">${e.id}</span></td>
+      <td>${e.hypothesis}</td>
+      <td>${e.gpu}</td>
+      <td><span class="badge ${archBadge}">${e.arch}${e.ssm_layers > 0 ? ' (' + e.ssm_layers + ' SSM)' : ''}</span></td>
+      <td class="right">${e.steps ?? '—'}</td>
+      <td class="right">${e.tok_s ? e.tok_s.toLocaleString() : '—'}</td>
+      <td class="right">${e.mid_train_bpb ? e.mid_train_bpb.toFixed(4) : '—'}</td>
+      <td class="right"><span class="bpb-val">${e.final_bpb ? e.final_bpb.toFixed(4) : '—'}</span></td>
+      <td class="right">${e.artifact_mb ? e.artifact_mb.toFixed(2) + ' MB' : '—'}</td>
+      <td><span class="badge ${statusBadge}">${e.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSpeed() {
+  const tbody = document.getElementById('speed-table-body');
+  const maxToks = Math.max(...DATA.speed_benchmarks.map(s => s.tok_s || 0));
+
+  tbody.innerHTML = DATA.speed_benchmarks.map(s => {
+    const pct = s.tok_s ? Math.round((s.tok_s / maxToks) * 100) : 0;
+    const barClass = pct > 80 ? 'bar-green' : pct > 50 ? 'bar-amber' : 'bar-red';
+    return `<tr>
+      <td>${s.config}<br><span style="color:var(--text-muted);font-size:11px">${s.gpu}</span></td>
+      <td class="right" style="font-weight:600">${s.tok_s ? s.tok_s.toLocaleString() : '—'}</td>
+      <td class="bar-cell">
+        <div class="bar ${barClass}" style="width:${pct}%"></div>
+        <span style="position:relative">${pct ? pct + '%' : '—'}</span>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderMilestones() {
+  const container = document.getElementById('milestone-list');
+  container.innerHTML = DATA.milestones.map(m => {
+    const statusClass = m.status === 'done' ? 'done' : m.status === 'active' ? 'active' : 'pending';
+    const progressClass = m.progress >= 100 ? 'green' : 'amber';
+    return `<div class="milestone-row">
+      <div class="m-id ${statusClass}">${m.id}</div>
+      <div class="m-desc">${m.name}<small>${m.desc}</small></div>
+      <div class="m-cost">${m.cost > 0 ? '$' + m.cost : 'Free'}</div>
+      <div>
+        <div class="progress-track">
+          <div class="progress-fill ${progressClass}" style="width:${m.progress}%"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDecisions() {
+  const container = document.getElementById('decision-log');
+  container.innerHTML = DATA.decisions.map(d => `
+    <div class="note">
+      <div class="note-time">${d.time}</div>
+      <div class="note-text">${d.text}</div>
+    </div>
+  `).join('');
+}
+
+init();
+</script>
+</body>
+</html>
