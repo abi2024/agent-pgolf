@@ -1,0 +1,20 @@
+PyTorch version: 2.8.0+cu128
+CUDA available: True
+GPUs: 8
+RUN_ID=exp_truncated_seed1339
+SEED=1339
+MAX_WALLCLOCK_SECONDS=600
+
+Starting training...
+step 100 train_loss: 5.2341 lr: 0.00030 time: 4.2s
+step 200 train_loss: 4.5123 lr: 0.00060 time: 8.3s
+step 500 train_loss: 3.8421 lr: 0.00100 time: 20.8s
+step 1000 train_loss: 3.2102 lr: 0.00100 time: 41.5s
+step 2000 train_loss: 2.7821 lr: 0.00100 time: 83.1s
+step 3000 train_loss: nan lr: 0.00095 time: 124.6s
+step 3100 train_loss: nan lr: 0.00094 time: 128.2s
+
+Traceback (most recent call last):
+  File "train_gpt.py", line 234, in <module>
+    loss.backward()
+RuntimeError: CUDA out of memory. Tried to allocate 2.00 GiB

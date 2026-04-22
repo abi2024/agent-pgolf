@@ -1,0 +1,44 @@
+PyTorch version: 2.8.0+cu128
+CUDA available: True
+GPUs: 8
+RUN_ID=exp_sample_seed1337
+SEED=1337
+MAX_WALLCLOCK_SECONDS=600
+DATA_PATH=./data/datasets/fineweb10B_sp8192/
+TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model
+VOCAB_SIZE=8192
+
+Starting training...
+step 100 train_loss: 5.2341 lr: 0.00030 time: 4.2s
+step 200 train_loss: 4.5123 lr: 0.00060 time: 8.3s
+step 500 train_loss: 3.8421 lr: 0.00100 time: 20.8s
+step 1000 train_loss: 3.2102 lr: 0.00100 time: 41.5s
+step 2000 train_loss: 2.7821 lr: 0.00100 time: 83.1s
+step 3000 train_loss: 2.4532 lr: 0.00095 time: 124.6s
+step 3500 train_loss: 2.3401 lr: 0.00080 time: 145.3s  [warmdown starts]
+step 4000 train_loss: 2.2234 lr: 0.00060 time: 166.1s
+step 5000 train_loss: 2.1102 lr: 0.00030 time: 207.7s
+step 6000 train_loss: 2.0423 lr: 0.00015 time: 249.2s
+step 7000 train_loss: 1.9812 lr: 0.00005 time: 290.8s
+step 8394 train_loss: 1.9634 lr: 0.00000 time: 348.3s
+
+Timed training stopped at 8394/20000 steps due to the wallclock cap.
+
+Running pre-quant evaluation...
+Pre-quant eval at stop: val_loss:1.6850, val_bpb:1.0745
+
+Quantizing weights to int6...
+Applying GPTQ post-training optimization...
+Compressing with zlib...
+Artifact size: 15842716 bytes compressed
+Code size: 82341 bytes
+Model size: 15760375 bytes
+Total compressed size: 15842716 bytes (15.84 MB)
+
+Running post-quant evaluation...
+Post-quant roundtrip eval: val_loss:1.6923, val_bpb:1.0812
+
+Final result:
+final_int8_zlib_roundtrip_exact val_bpb:1.08120543
+total_time: 598.3s
+Training complete.

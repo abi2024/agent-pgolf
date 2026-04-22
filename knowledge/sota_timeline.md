@@ -1,6 +1,8 @@
 # SOTA Timeline — Parameter Golf Leaderboard
 
-Last updated: April 14, 2026
+Last updated by hand: April 17, 2026. This file is auto-appended by `pgolf leaderboard fetch` when new merged records are detected. The `/morning` skill keeps it current.
+
+For the authoritative live state, read `state/leaderboard.json`.
 
 ## Progression
 
@@ -9,7 +11,7 @@ Last updated: April 14, 2026
 | Mar 18 | 1.2244 | Naive baseline (9L, 512dim, 1024vocab) | Baseline |
 | Mar 18 | 1.2197 | FP16 tied embeddings | #70 |
 | Mar 18 | 1.2147 | Mixed int8/int6 precision | — |
-| Mar 18 | 1.206 | 2048 sequence length | — |
+| Mar 18 | 1.206  | 2048 sequence length | — |
 | Mar 19 | 1.2014 | 4096 sequence length | — |
 | Mar 19 | 1.1925 | Sliding window evaluation | — |
 | Mar 19 | 1.1748 | 10 layers + Muon WD | — |
@@ -35,26 +37,22 @@ Last updated: April 14, 2026
 | Apr 06 | 1.0828 | QK-Gain 5.0 + legal score-first TTT | #1413 |
 | Apr 08 | 1.0822 | Parallel residuals on SP8192 + TTT stack | #1477 |
 | Apr 09 | 1.0810 | 3-layer recurrence + QK-Gain 5.25 | #1493 |
+| Apr ~14 | 1.0639 | Casefold tokenizer + parallel residuals + systems opt | (check PR list) |
 
-## Key Inflection Points
+## Key inflection points
 
-1. **SP4096/8192 tokenizer** (Apr 1-5): Jumped from ~1.10 to ~1.08 region. Larger vocab = better compression. SP8192 is now standard.
-
-2. **Depth recurrence** (Mar 31): Looping layers 4-5 gave "free" effective depth. Now extended to 3-layer (layers 3-5).
-
-3. **Test-time training** (Mar 23): Legal score-first TTT evaluates tokens first, then trains on them. Significant but conflicts with weight tying.
-
+1. **SP4096/8192 tokenizer** (Apr 1-5): 1.10 → 1.08 region. Larger vocab = better compression.
+2. **Depth recurrence** (Mar 31): Looping layers gave free effective depth. Now 3-layer.
+3. **Test-time training** (Mar 23): Legal score-first TTT. Conflicts with weight tying.
 4. **GPTQ post-training** (Mar 25): Better than naive int8 rounding. Self-generated calibration data.
+5. **Casefold tokenizer + systems opt** (~Apr 14): Current frontier. Systems optimization = more training steps in the 10-min budget.
 
-## Current SOTA Stack (1.0810)
+## Current frontier (as of Apr 17)
 
-- SP8192 SentencePiece tokenizer
-- 3-layer recurrence (layers 3-5)
-- Parallel residuals (separate attn/MLP paths)
-- QK-Gain 5.25
-- Legal score-first TTT
-- GPTQ embeddings
-- MuonEq-R optimizer
-- Std-based GPTQ clipping (SDClip)
-- Int6 QAT with STE
-- zstd compression
+The most recent recorded SOTA is ~1.0639 ("Casefold Tokenizer + Parallel Residuals + Systems Optimization"). Run `pgolf leaderboard fetch` to get the current value — the frontier moves every few days.
+
+Run `pgolf leaderboard current` to see the cached state.
+
+## How to keep this file current
+
+The `/morning` skill automatically checks for new SOTA entries. If the leaderboard fetch returns a new record not in this table, append a row. Use the PR title to identify the technique additions.

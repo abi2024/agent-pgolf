@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "bash": {
+      "pre": ".claude/hooks/pre-bash.sh",
+      "post": ".claude/hooks/post-bash.sh"
+    }
+  }
+}

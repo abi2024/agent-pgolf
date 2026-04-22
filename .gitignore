@@ -1,12 +1,37 @@
-*.egg-info/
-*.pyc
-.DS_Store
-.venv/
-__pycache__/
-experiments/*/*.bin
-experiments/*/*.pt
-experiments/*/train.log
-final_model.int6.ptz
-final_model.pt
-parameter-golf/
+# Database — regenerated from scratch
 pgolf.db
+pgolf.db-journal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# State — personal, not committed
+state/spending.jsonl
+state/leaderboard.json
+
+# Large training artifacts
+experiments/*/train*.log
+experiments/*/smoke.log
+experiments/*/*.pt
+experiments/*/*.bin
+experiments/*/*_results.json
+experiments/*/model*.bin
+
+# The competition repo (cloned alongside, not inside)
+parameter-golf/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
