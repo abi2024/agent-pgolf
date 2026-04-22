@@ -1,7 +1,10 @@
 ---
-name: plan-experiment
 description: Propose one specific experiment with hypothesis, config diff, pre-registered decision rule, and conflict check. Reads broadly across prior experiments and knowledge before proposing. Does NOT run anything.
+argument-hint: [focus-description]
+allowed-tools: Read, Grep, Glob, Bash(ls:*), Bash(cat:*), Bash(sqlite3:*)
+model: sonnet
 ---
+
 
 Abi has given you a focus. The argument is: $ARGUMENTS
 
@@ -115,3 +118,11 @@ Then hand off to `/run-experiment exp_NNN`.
 - Total output: one screen
 - Step 0 (reading) happens before you write anything else
 - If plan uses a technique with no `knowledge/techniques/*.md` doc, flag it as a risk
+
+## Gotchas
+
+- **Skipping the step-0 read is the #1 failure mode.** If you don't grep across prior analyses and lessons_learned first, you'll propose experiments that repeat prior failures. Always read before proposing.
+- **"Experiments in progress" trick:** if an experiment is in `status='planned'` in the DB but has no train.log after 6h, it crashed. Don't treat it as "still running" and propose on top of it.
+- **Techniques with no knowledge doc.** If the user asks about a technique that has no `knowledge/techniques/<name>.md`, flag it explicitly. Propose only if you can cite the paper.
+- **SOTA drift:** the leaderboard moves every 1-2 days. If `state/leaderboard.json` is >12h old, run `pgolf leaderboard fetch` before proposing.
+- **Parent experiment selection:** always choose the most recent GREEN parent, not the overall best. YELLOW parents can be used for stacking but flag the uncertainty.

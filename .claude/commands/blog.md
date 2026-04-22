@@ -1,7 +1,10 @@
 ---
-name: blog
-description: Generate a complete blog post draft (800-1200 words) for a given day and experiment, drawing on the full knowledge base. Replaces the scaffold produced by `pgolf blog`.
+description: Generate a complete blog post draft (800-1200 words) for a given day and experiment.
+argument-hint: [day_number] [exp_id]
+allowed-tools: Read, Write, Glob
+model: sonnet
 ---
+
 
 Generate a publication-quality blog post. Arguments: $ARGUMENTS should contain a day number and an experiment ID (e.g., "3 exp_007").
 
@@ -93,3 +96,9 @@ Suggested X thread summary (3 tweets):
 ```
 
 Do not write more than 5 lines of chat output. The real work is in the file.
+
+## Gotchas
+
+- Don't use the `pgolf blog` scaffold command's output directly — it produces a template with blanks. Write the post yourself.
+- Voice: first-person, direct, honest about failures. "This didn't work because X" beats "results were mixed."
+- Always include the statistical test numbers, not just the decision. Readers care about p-values.

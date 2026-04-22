@@ -1,7 +1,9 @@
 ---
-name: checkpoint
-description: End-of-day routine. Writes journal entry, commits everything, reports progress vs plan and budget runway.
+description: End-of-day routine. Writes journal entry, commits, reports progress vs plan and budget runway.
+allowed-tools: Read, Write, Bash(git:*), Bash(python:*)
+model: haiku
 ---
+
 
 End-of-day checkpoint. Execute briefly and produce a one-screen summary for Abi.
 
@@ -98,3 +100,9 @@ If `git config --get remote.origin.url` returns a remote, suggest (but do not ex
 ```
 git push origin main
 ```
+
+## Gotchas
+
+- If `git status` is clean, skip the commit step. Don't create empty commits.
+- Journal entry before commit — the commit message references the journal.
+- Don't push if tests fail. The scaffold is on GitHub; broken state should not go there.

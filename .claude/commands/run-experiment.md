@@ -1,7 +1,10 @@
 ---
-name: run-experiment
 description: Execute a planned experiment through smoke → screen → validate stages, respecting cost gates and pre-registered thresholds.
+argument-hint: [exp_id]
+allowed-tools: Read, Write, Edit, Bash
+model: sonnet
 ---
+
 
 Execute experiment $ARGUMENTS through the staged run protocol. **DO NOT skip stages.** Each stage produces a go/no-go decision.
 
@@ -132,3 +135,11 @@ Once all seeds are recorded:
 - Never skip Stage 1 when a local GPU is available
 - If any stage crashes non-deterministically (pod preemption, network blip), retry ONCE. Second failure → investigate, don't retry blindly
 - If cumulative spend for this experiment exceeds $40, stop and ask Abi
+
+## Gotchas
+
+- **Never skip the smoke test when a local GPU exists.** Smoke is free; an OOM on 8×H100 is $4.
+- **`MAX_WALLCLOCK_SECONDS=600` is non-negotiable.** The pre-bash hook refuses torchrun without it. Don't add `PGOLF_NO_WALLCLOCK=1` unless explicitly debugging infrastructure.
+- **`PGOLF_CONFIRM_8XH100=1` must be set per-run, not persistently.** If you export it to the environment, every subsequent torchrun skips the confirmation gate. Always use inline: `PGOLF_CONFIRM_8XH100=1 torchrun ...`.
+- **Log files must be in the experiment folder for the post-bash hook to find them.** Always `tee` into `experiments/exp_NNN/train_seed<N>.log`. If you run from parameter-golf/ and the log lands there, the hook can't log spend.
+- **Pod preemption on Community Cloud** is possible. For validation runs (8×H100) use Secure Cloud to avoid mid-run failures.

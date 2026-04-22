@@ -1,7 +1,10 @@
 ---
-name: analyze-results
 description: Parse experiment results, apply pre-registered decision rule, update knowledge base, propose next step.
+argument-hint: [exp_id]
+allowed-tools: Read, Write, Edit, Bash, Grep
+model: sonnet
 ---
+
 
 Produce a complete analysis of experiment $ARGUMENTS. This updates the knowledge base — it must be careful and thorough.
 
@@ -108,3 +111,10 @@ Based on decision:
 
 - analysis.md is the long-form artifact. Your chat output should be brief: the GREEN/YELLOW/RED, the numbers, and the proposed next step.
 - Apply the pre-registered rule mechanically. If seed-1 looks great but the rule says screened-out, it's screened-out — don't rationalize continuing.
+
+## Gotchas
+
+- **Apply the pre-registered rule mechanically.** If seed-1 looks great but is over the threshold, screen it out. Don't rationalize "one more seed to see."
+- **Parse the `final_int8_zlib_roundtrip_exact val_bpb:` line specifically.** Periodic `val_bpb:` values during training are pre-quant and will look better than the scored metric.
+- **Std > 0.002 across seeds means re-run the outlier.** Don't report a mean of three seeds where one is clearly off — it inflates variance and makes the Welch's t-test unreliable.
+- **Artifact size is measured from the actual file, not just the log.** A log line saying "15.8 MB" is evidence; `ls -la` on the model file is truth. For submission, trust the filesystem.

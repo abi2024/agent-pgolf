@@ -100,7 +100,7 @@ pgolf-agent/
 
 ## The daily loop
 
-**Prefer skills over ad-hoc workflows.** Skills in `.claude/skills/` are the canonical way to do each task.
+**Prefer skills over ad-hoc workflows.** Skills in `.claude/commands/` are the canonical way to do each task.
 
 ```
 /morning                           → refresh leaderboard, check budget, propose focus
@@ -113,7 +113,7 @@ pgolf-agent/
 /submit-check exp_NNN              → paranoid pre-PR validation (only for GREEN results)
 ```
 
-Each skill's full prompt is in `.claude/skills/<skill>.md`. Read it before invoking.
+Each skill's full prompt is in `.claude/commands/<skill>.md`. Read it before invoking.
 
 ## Visibility commands
 
@@ -184,6 +184,6 @@ The pre-bash hook enforces this. Override mechanisms exist but require explicit 
 
 ## When in doubt
 
-Read the skill's full prompt in `.claude/skills/<skill>.md`. Skill prompts are the authoritative source for "how do I do X" — AGENTS.md is the overview.
+Read the skill's full prompt in `.claude/commands/<skill>.md`. Skill prompts are the authoritative source for "how do I do X" — AGENTS.md is the overview.
 
 If you're about to do something expensive (`torchrun --nproc_per_node=8`, `git push`, submit a PR), STOP and confirm with Abi.

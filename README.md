@@ -8,7 +8,7 @@ A project structure that makes Claude Code a reliable Parameter Golf researcher:
 
 - **AGENTS.md** — Operating instructions (the "system prompt")
 - **WORKFLOW.md** — Operator's guide with the exact 7-day workflow
-- **.claude/skills/** — Eight slash-commands: `/morning`, `/plan-experiment`, `/run-experiment`, `/analyze-results`, `/synthesize`, `/blog`, `/checkpoint`, `/submit-check`
+- **.claude/commands/** — Eight slash-commands: `/morning`, `/plan-experiment`, `/run-experiment`, `/analyze-results`, `/synthesize`, `/blog`, `/checkpoint`, `/submit-check`
 - **.claude/hooks/** — Bash hooks that enforce budget and require confirmation for expensive runs
 - **scripts/pgolf.py** — CLI toolkit: tracking, parsing, spending, leaderboard, submission validation, reports, doctor
 - **knowledge/** — Technique catalog, SOTA timeline, lessons learned, research framing guide

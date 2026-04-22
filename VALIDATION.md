@@ -54,8 +54,8 @@ These require a human eye — the script can't catch everything.
 ### 4. Skim the seven skill files
 
 ```bash
-ls -la .claude/skills/
-cat .claude/skills/morning.md
+ls -la .claude/commands/
+cat .claude/commands/morning.md
 ```
 
 Read each skill file. Check that:
@@ -104,7 +104,7 @@ claude
 
 Check that Claude Code:
 - Finds and reads AGENTS.md
-- Recognizes the skills in `.claude/skills/`
+- Recognizes the skills in `.claude/commands/`
 - Respects the hooks in `.claude/hooks/`
 
 If Claude Code reports "I don't see any skills" or similar, check that `.claude/settings.json` is pointed at by the version of Claude Code you're using.

@@ -119,13 +119,13 @@ def check_structure(rpt, verbose=False):
         ".claude/settings.json",
         ".claude/hooks/pre-bash.sh",
         ".claude/hooks/post-bash.sh",
-        ".claude/skills/morning.md",
-        ".claude/skills/plan-experiment.md",
-        ".claude/skills/run-experiment.md",
-        ".claude/skills/analyze-results.md",
-        ".claude/skills/blog.md",
-        ".claude/skills/checkpoint.md",
-        ".claude/skills/submit-check.md",
+        ".claude/commands/morning.md",
+        ".claude/commands/plan-experiment.md",
+        ".claude/commands/run-experiment.md",
+        ".claude/commands/analyze-results.md",
+        ".claude/commands/blog.md",
+        ".claude/commands/checkpoint.md",
+        ".claude/commands/submit-check.md",
         "knowledge/lessons_learned.md",
         "knowledge/sota_timeline.md",
         "knowledge/learning_path.md",
@@ -511,7 +511,7 @@ def main():
     check_structure(rpt, args.verbose)
 
     # Phases 2-7: in a temp directory, don't pollute the real project
-    with tempfile.TemporaryDirectory(delete=not args.keep_temp) as td:
+    with tempfile.TemporaryDirectory() as td:
         temp = Path(td) / "pgolf-test"
         temp.mkdir()
 

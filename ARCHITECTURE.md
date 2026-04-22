@@ -8,7 +8,7 @@ Four layers, stacked:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  SKILL LAYER        .claude/skills/*.md                      │  Thinking
+│  SKILL LAYER        .claude/commands/*.md                      │  Thinking
 │                     /morning, /plan-experiment, /run-         │  (prompts)
 │                     experiment, /analyze-results, /blog,      │
 │                     /checkpoint, /submit-check                │
@@ -154,4 +154,4 @@ If you want to extend this:
 - **New technique doc**: add `knowledge/techniques/<name>.md` following the format of existing ones. `check_technique_conflicts` will automatically detect "### X + Y = BAD" headers in lessons_learned.md.
 - **New safety rule**: add enforcement in `pre-bash.sh`, document in `AGENTS.md`. If you add the rule to AGENTS.md without the enforcement, you're back to signs on unlocked doors.
 - **New CLI command**: add to `scripts/pgolf.py` main()'s argparse tree. Keep stdlib-only; add to `tests/test_cli.py`.
-- **New skill**: add `.claude/skills/<name>.md` with the frontmatter. Skills can call the CLI and each other.
+- **New skill**: add `.claude/commands/<name>.md` with the frontmatter. Skills can call the CLI and each other.

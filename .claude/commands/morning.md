@@ -1,7 +1,9 @@
 ---
-name: morning
-description: Start-of-day routine. Pulls latest leaderboard, reviews last 24h of experiments, proposes today's focus, confirms budget remaining.
+description: Start-of-day routine. Refreshes leaderboard, reviews last 24h, proposes today's focus, confirms budget.
+allowed-tools: Read, Bash(python:*), Bash(cat:*), Bash(ls:*)
+model: sonnet
 ---
+
 
 You are starting a new day of Parameter Golf work for Abi. Execute these steps in order, briefly. Keep the whole thing under 400 words. Abi reads this over coffee.
 
@@ -51,3 +53,9 @@ Propose 1-2 experiment directions. For EACH, give:
 End with: "Pick one (A/B) or redirect. No experiments run until you confirm."
 
 Do NOT proceed to `/plan-experiment` without an explicit choice from Abi.
+
+## Gotchas
+
+- Don't skip the leaderboard fetch even if you ran it yesterday. SOTA moves fast.
+- If remaining budget < $50, skip the "propose two directions" step. One direction only, or recommend pause.
+- `pgolf status` uses the cached leaderboard. If it says "unknown" the cache is missing — fetch first.

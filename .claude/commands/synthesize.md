@@ -1,7 +1,9 @@
 ---
-name: synthesize
-description: Read all prior experiments and write knowledge/observations.md with cross-experiment patterns. Run after every 3-4 experiments, or when something feels off. Feeds future /plan-experiment calls.
+description: Read all prior experiments and write knowledge/observations.md with cross-experiment patterns. Run after every 3-4 experiments.
+allowed-tools: Read, Write, Grep, Bash(sqlite3:*), Bash(cat:*)
+model: sonnet
 ---
+
 
 You are doing post-hoc pattern mining across experiments. The output is `knowledge/observations.md`, which later `/plan-experiment` invocations will read.
 
@@ -120,3 +122,9 @@ Recommendations feed next /plan-experiment.
 - Before any experiments have completed (there's nothing to synthesize)
 - Mid-experiment (wait until analysis.md is written)
 - As a substitute for actually running experiments (synthesis without new data is just re-reading)
+
+## Gotchas
+
+- Don't run if fewer than 3 experiments have completed. Nothing to synthesize.
+- Don't invent patterns. "No evidence yet" is a valid finding for any section.
+- Flag blind spots explicitly — "only 2 seeds on exp_004, can't confirm variance."

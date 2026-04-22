@@ -1287,18 +1287,18 @@ def doctor(args):
             ok.append(f"Hook ready: {h.relative_to(PROJECT_ROOT)}")
 
     # 5. Skills present
-    skills_dir = PROJECT_ROOT / ".claude" / "skills"
+    skills_dir = PROJECT_ROOT / ".claude" / "commands"
     expected = {"morning", "plan-experiment", "run-experiment", "analyze-results",
                 "blog", "checkpoint", "submit-check", "synthesize"}
     if skills_dir.exists():
         present = {p.stem for p in skills_dir.glob("*.md")}
         missing = expected - present
         if missing:
-            issues.append(f"Skills missing: {missing}")
+            issues.append(f"Commands missing: {missing}")
         else:
-            ok.append(f"All {len(expected)} skills present")
+            ok.append(f"All commands present")
     else:
-        issues.append(f"Skills directory missing: {skills_dir}")
+        issues.append(f"Commands directory missing: {skills_dir}")
 
     # 6. Knowledge base basics
     for required_kb in ["lessons_learned.md", "sota_timeline.md", "learning_path.md"]:

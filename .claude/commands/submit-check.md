@@ -1,7 +1,10 @@
 ---
-name: submit-check
-description: Full pre-submission validation. Verifies all competition requirements before filing a leaderboard PR. Paranoid by design.
+description: Paranoid pre-submission validation. Verifies all competition requirements before filing a PR.
+argument-hint: [exp_id]
+allowed-tools: Read, Grep, Bash
+model: sonnet
 ---
+
 
 Validate experiment $ARGUMENTS for submission as a leaderboard PR. **Be paranoid.** This is where mistakes become permanent public record.
 
@@ -160,3 +163,11 @@ List ALL failures (not just the first). For each, propose a specific fix:
 - "std > 0.003" → "Seed XXXX looks like an outlier; re-run it to check"
 
 Then stop. Do not try to continue toward submission with fixable failures.
+
+## Gotchas
+
+- **Seeds must be independent.** Same seed value twice ≠ two seeds. Check `grep "SEED=" experiments/exp_NNN/train_seed*.log` and confirm three distinct values.
+- **GPU type must be exactly `8xH100_SXM`.** Not PCIe, not 4xH100, not mixed. Mixed results across seed runs invalidate the submission.
+- **`torch_version` and `pg_commit` must match across all seeds.** If you updated PyTorch between seed 1 and seed 2, the comparison is suspect.
+- **Never auto-push a PR.** `/submit-check` prints the PR body; Abi reviews and pushes manually. This is the last human gate.
+- **Clear `ANTHROPIC_API_KEY` before running `gh` or any Anthropic-scope tool** if you want to use your Claude.ai credentials instead.

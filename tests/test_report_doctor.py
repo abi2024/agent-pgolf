@@ -13,10 +13,10 @@ REPO = Path(__file__).parent.parent
 
 @pytest.fixture
 def temp_project(tmp_path):
-    """Full temp project with scripts, hooks, skills, knowledge."""
+    """Full temp project with scripts, hooks, commands, knowledge."""
     (tmp_path / "scripts").mkdir()
     (tmp_path / ".claude" / "hooks").mkdir(parents=True)
-    (tmp_path / ".claude" / "skills").mkdir(parents=True)
+    (tmp_path / ".claude" / "commands").mkdir(parents=True)
     (tmp_path / "knowledge" / "techniques").mkdir(parents=True)
     (tmp_path / "experiments").mkdir()
     (tmp_path / "blog" / "drafts").mkdir(parents=True)
@@ -32,12 +32,12 @@ def temp_project(tmp_path):
         dst.write_text(src.read_text())
         dst.chmod(0o755)
 
-    # Copy the eight skills
+    # Copy the eight commands
     for skill in ["morning", "plan-experiment", "run-experiment", "analyze-results",
                   "blog", "checkpoint", "submit-check", "synthesize"]:
-        src = REPO / ".claude" / "skills" / f"{skill}.md"
+        src = REPO / ".claude" / "commands" / f"{skill}.md"
         if src.exists():
-            (tmp_path / ".claude" / "skills" / f"{skill}.md").write_text(src.read_text())
+            (tmp_path / ".claude" / "commands" / f"{skill}.md").write_text(src.read_text())
 
     # Copy required knowledge files
     for kb in ["lessons_learned.md", "sota_timeline.md", "learning_path.md"]:
@@ -152,10 +152,10 @@ def test_doctor_detects_stale_leaderboard(temp_project):
 
 def test_doctor_detects_missing_skill(temp_project):
     """Remove a skill and doctor should flag it."""
-    (temp_project / ".claude" / "skills" / "synthesize.md").unlink()
+    (temp_project / ".claude" / "commands" / "synthesize.md").unlink()
     r = run_pgolf(temp_project, "doctor")
     assert r.returncode != 0
-    assert "skill" in r.stdout.lower() and "synthesize" in r.stdout.lower()
+    assert "command" in r.stdout.lower() and "synthesize" in r.stdout.lower()
 
 
 def test_status_shows_lineage_tree(temp_project):
