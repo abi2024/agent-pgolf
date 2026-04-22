@@ -39,8 +39,13 @@ def run_pre_bash(project, command, env_extra=None):
     env = os.environ.copy()
     if env_extra:
         env.update(env_extra)
+    payload = json.dumps({
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+    })
     return subprocess.run(
-        [str(project / ".claude" / "hooks" / "pre-bash.sh"), command],
+        [str(project / ".claude" / "hooks" / "pre-bash.sh")],
+        input=payload,
         capture_output=True, text=True, cwd=project, env=env,
     )
 

@@ -1,19 +1,14 @@
 #!/bin/bash
-# post-bash.sh — runs after every bash command.
-# For torchrun commands, parses the log and records spend.
-#
-# Registered in .claude/settings.json as hooks.bash.post
-#
-# Args:
-#   $1 = the command that was executed
-#   $2 = exit code of that command
+# post-bash.sh — runs after Bash tool calls.
+# Reads JSON payload on stdin per Claude Code hook API.
+# For torchrun commands, logs spend to state/spending.jsonl.
 
 set -u
 
-CMD="${1:-}"
-EXIT_CODE="${2:-0}"
+PAYLOAD=$(cat)
+CMD=$(echo "$PAYLOAD" | jq -r '.tool_input.command // empty')
 
-# Only act on torchrun
+# Only log torchrun
 if [[ ! "$CMD" =~ torchrun ]]; then
     exit 0
 fi
@@ -25,7 +20,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NPROC=$(echo "$CMD" | grep -oE 'nproc_per_node=[0-9]+' | head -1 | cut -d= -f2)
 NPROC="${NPROC:-1}"
 
-# Find the most recently modified train.log in experiments/
+# Find the most recently modified train log
 LATEST_LOG=""
 if [[ -d "$REPO_ROOT/experiments" ]]; then
     LATEST_LOG=$(find "$REPO_ROOT/experiments" -name "train*.log" -mmin -60 2>/dev/null \
@@ -33,17 +28,20 @@ if [[ -d "$REPO_ROOT/experiments" ]]; then
                  | sort -rn | head -1 | awk '{print $2}')
 fi
 
-# Try to extract the experiment ID from the log path
+# Extract the experiment ID from the log path
 EXP_ID=""
 if [[ -n "$LATEST_LOG" ]]; then
     EXP_ID=$(echo "$LATEST_LOG" | grep -oE 'exp_[0-9]+' | head -1)
 fi
 
-# Log the spend event
-python3 "$REPO_ROOT/scripts/pgolf.py" spend log-from-bash \
-    --exp-id "${EXP_ID:-unknown}" \
-    --nproc "$NPROC" \
-    ${LATEST_LOG:+--log-path "$LATEST_LOG"} \
-    --exit-code "$EXIT_CODE" 2>&1 | tail -3 >&2
+# Delegate spend logging to pgolf.py
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$REPO_ROOT/scripts/pgolf.py" spend log-from-bash \
+        --command "$CMD" \
+        --nproc "$NPROC" \
+        --log-path "${LATEST_LOG:-none}" \
+        --exp-id "${EXP_ID:-none}" \
+        2>/dev/null || true
+fi
 
 exit 0
