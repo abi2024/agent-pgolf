@@ -1,5 +1,43 @@
 # Lessons Learned — What Failed and Why
 
+---
+
+## ⚠ MEASUREMENT INTEGRITY — READ THIS FIRST
+
+### BPB Double-Counting Bug: PR #1698 Inheritance Line (~17.46% inflation)
+
+**Source**: yahya010 self-closure comment on PR #1734 (2026-04-19). The author explicitly described the bug before any external audit. This section systematizes that finding.
+
+**The bug — two independent +1 errors that compound:**
+1. `build_sentencepiece_luts`: for every token with a leading space (`▁`), the LUT stores `len(piece.encode('utf-8')) + 1` instead of `len(piece.encode('utf-8'))` — baking in +1 byte per leading-space token at LUT construction time.
+2. `eval_val_sliding`: when accumulating byte counts during sliding-window evaluation, adds another +1 for the same leading-space tokens — double-counting them.
+
+Result: reported byte count is inflated by approximately the fraction of tokens that have leading spaces (roughly 35–50% of SentencePiece tokens in English text), yielding **~17.46% fewer reported bytes** than canonical. Since BPB = bits / bytes, fewer bytes → lower (better-looking) BPB.
+
+**Canonical correction**: `canonical_bpb ≈ reported_bpb × 1.1746`. PR #1734's reported 1.0108 → canonical ~1.187, which is **worse than the merged-SOTA threshold of 1.0738**.
+
+**Affected submissions** (all descend from PR #1698's buggy `build_sentencepiece_luts`):
+- PR #1734 — GatedDeltaNet + Legal TTT + Brotli-11 (closed by author)
+- PR #1758 — PreQuant TTT LR=1e-3 + Unfrozen (open, inflated)
+- All other open PRs in the #1698 family (treat any BPB < 1.06 with suspicion until lineage is verified)
+
+**Verified correct lineage** (use only these as parents or comparisons):
+- PR #1700 — correct-LUT base implementation
+- PR #1727 — SP8192 + MP-SGD TTT 4 phases + QK-Gain 5.25, val_bpb 1.07217 (yahya010, confirmed correct)
+- PR #1493 — Legal score-first TTT, val_bpb 1.0810 (older anchor, pre-SP8192)
+
+**Action rule**: Before parenting any experiment on an open PR, verify that its `build_sentencepiece_luts` does NOT add +1 for leading-space tokens. One-line check:
+```python
+# In build_sentencepiece_luts — the correct line is:
+base_bytes_np[token_id] = len(piece.encode('utf-8'))  # correct
+# NOT:
+base_bytes_np[token_id] = len(piece.encode('utf-8')) + 1  # BUG
+```
+
+**Active work**: `knowledge/measurement_integrity_audit.md` documents the systematic re-scoring project (exp_001–003).
+
+---
+
 ## Technique Conflicts
 
 ### EMA + Aggressive Depth Recurrence = BAD
