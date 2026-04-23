@@ -1,0 +1,14 @@
+{
+  "id": "exp_001",
+  "hypothesis": "PR #1727 verbatim on 8xH100 SXM seed 1337 lands in [1.062, 1.082], confirming hardware parity for Measurement Integrity Audit",
+  "technique_stack": [
+    "sp8192",
+    "phased_ttt",
+    "mp_sgd_ttt",
+    "qk_gain",
+    "int6_qat",
+    "gptq"
+  ],
+  "parent_id": null,
+  "created_at": "2026-04-23T05:15:35.668892"
+}
