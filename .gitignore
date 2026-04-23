@@ -35,3 +35,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Binary model artifacts — kept on Network Volume only, not in git
+experiments/**/final_model.pt
+experiments/**/*.bin
