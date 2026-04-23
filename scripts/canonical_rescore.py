@@ -31,12 +31,14 @@ import numpy as np
 # Static LUT classification
 # ---------------------------------------------------------------------------
 
-# Obfuscated submissions wrap the entire module body in an
-# ``exec(lzma.decompress(base64.b85decode(...)))`` call. Match that exact
-# composition rather than any mention of lzma/b85decode (PR #1727 itself
-# imports lzma for an artifact compressor without being obfuscated).
+# Obfuscated submissions wrap the entire module body in either
+# ``exec(lzma.decompress(base64.b85decode(...)))`` or assign the decoded blob
+# to a local and execute it via ``runpy``/``exec`` later. Both share a single
+# expression chaining ``decompress(...b85decode(...))`` — match that, not bare
+# imports (PR #1727 imports lzma for an artifact compressor without being
+# obfuscated).
 _OBFUSCATED_RE = re.compile(
-    r"exec\s*\(\s*[A-Za-z_][\w.]*\.decompress\s*\(\s*[A-Za-z_][\w.]*\.b85decode\s*\(",
+    r"[A-Za-z_][\w.]*\.decompress\s*\(\s*[A-Za-z_][\w.]*\.b85decode\s*\(",
     re.DOTALL,
 )
 _BUGGY_LUT_RE = re.compile(r"len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)\s*\+\s*1")
