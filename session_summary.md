@@ -1,9 +1,15 @@
-# Session Summary — 2026-04-23 Autonomous Block + 2026-04-24 Polish Pass
+# Session Summary — 2026-04-23 Autonomous Block + 2026-04-24 Polish + 2026-04-24 Three-Variant Classifier Extension
 
 3-phase autonomous block: write exp_001 analysis, build canonical_rescore tool,
 run audit on top-10 PRs, draft three audit docs, push to origin.
 Follow-up polish pass on 2026-04-24: three-commit cleanup addressing the
 ratio discrepancy, tool documentation, and writeup tone.
+Follow-up extension block on 2026-04-24: extend the LUT classifier from
+single-bug to three-variant detection (leading_space_plus_one,
+byte_token_wrong_size, missing_is_unused), re-audit the top 10 PRs with
+the extended classifier, update all docs. **Key finding: zero top-10 PRs
+changed classification under v2.** This strengthens the top-10
+assessment.
 
 ## What was done
 
@@ -208,11 +214,53 @@ audit/corrected_leaderboard.md        ← LUT-verified column + neutral caveats
 audit/results.md                      ← conditional arithmetic language
 ```
 
+## Three-variant classifier extension (2026-04-24)
+
+### Pass A — extend classifier
+* `scripts/canonical_rescore.py` gains `classify_lut_detailed(src)`
+  which returns `(status, deviations)`. Three new property detectors:
+  * P1 `leading_space_plus_one` — widened regex to accept
+    `piece[1:].encode("utf-8")` in addition to `piece.encode("utf-8")`.
+  * P2 `byte_token_wrong_size` — locates `if sp.is_byte(t):` branch and
+    checks the assignment is literal `1`.
+  * P3 `missing_is_unused` — scans `is_control(` call sites and verifies
+    the surrounding window contains both `is_unknown(` and `is_unused(`.
+* New JSON fields: `lut_bug_detections`, `detected_bugs_description`,
+  `inflation_ratio_includes`. Multi-bug PRs get a conservative-ratio
+  warning in `notes`.
+* Three new fixtures under `tests/fixtures/`: `buggy_byte_token.py`,
+  `buggy_missing_is_unused.py`, `buggy_triple.py`.
+* Six new tests in `test_canonical_rescore.py` (14 → 20).
+* Commit: `0287642 tool: extend LUT classifier to detect three bug variants`.
+
+### Pass B — re-audit top 10 PRs
+* New driver `audit/run_audit_v2.sh` writes to `audit/per_pr_v2/` (v1
+  outputs preserved in `audit/per_pr/`).
+* Result: **0 of 10 PRs changed classification**. Same 6 CORRECT + 4
+  OBFUSCATED split as v1.
+* Spot-check control: yahya010's PR #1734 train_gdn_7k.py correctly
+  flagged as BUGGY with `["leading_space_plus_one", "missing_is_unused"]`
+  (P2 returns INDETERMINATE because yahya's code has no sp.is_byte
+  branch — byte tokens fall through the default path; this is the
+  designed DEVIATES-vs-INDETERMINATE behavior).
+* Changelog: `audit/changelog_v2.md`.
+* Commit: `12c340f audit: re-audit v2 with extended classifier — no top-10 PR changed classification`.
+
+### Pass C — docs
+* `audit/methodology.md` new §5 documenting the three properties,
+  detector design, and DEVIATES-vs-INDETERMINATE rule; old §5/§6/§7 → §6/§7/§8.
+* `audit/writeup.md` TL;DR + tool section + attribution updated.
+* `audit/results.md` and `audit/corrected_leaderboard.md` annotated
+  with v1/v2 agreement footnote.
+* `audit/reviewer_readiness.md` (new, committed copy of /tmp version).
+* `scripts/README_canonical_rescore.md` new "Three-variant classifier"
+  section + JSON schema additions + multi-bug invocation example.
+* Commit: `9411b87 docs: update writeup, methodology, results, README for three-bug classifier`.
+
 ## Test count
 
-56 tests pass (42 pre-existing + 10 from autonomous block +
-4 scoring-mode tests from the polish pass). Run with
-`python -m pytest tests/ -q`.
+62 tests pass (42 pre-existing + 20 in `test_canonical_rescore.py`
+after the three-variant extension). Run with `python -m pytest tests/ -q`.
 
 ## Did NOT do (per prompt directive)
 
