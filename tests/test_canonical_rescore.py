@@ -19,6 +19,9 @@ CANONICAL_TRAIN_SCRIPT = (
     / "train_gpt.py"
 )
 BUGGY_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "buggy_train_gpt.py"
+BUGGY_BYTE_TOKEN_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "buggy_byte_token.py"
+BUGGY_MISSING_IS_UNUSED_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "buggy_missing_is_unused.py"
+BUGGY_TRIPLE_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "buggy_triple.py"
 TOKENIZER = PARAMETER_GOLF / "data" / "tokenizers" / "fineweb_8192_bpe.model"
 VAL_DATA = str(PARAMETER_GOLF / "data" / "datasets" / "fineweb10B_sp8192" / "fineweb_val_*.bin")
 
@@ -67,11 +70,24 @@ def test_obfuscated_pattern_classifies_as_obfuscated():
 
 
 def test_lzma_import_alone_does_not_trigger_obfuscated():
-    """PR #1727 imports lzma for artifact compression but is not obfuscated."""
+    """PR #1727 imports lzma for artifact compression but is not obfuscated.
+
+    The three-variant classifier requires all canonical properties to match
+    for a CORRECT verdict, so the synthetic source below includes the
+    sp.is_byte branch and the full boundary predicate alongside the
+    canonical leading-space assignment.
+    """
     src = (
         "import lzma\n"
         "def build_sentencepiece_luts(sp, vocab, device):\n"
-        "    base_bytes_np[token_id] = len(piece.encode('utf-8'))\n"
+        "    for token_id in range(vocab):\n"
+        "        if sp.is_control(token_id) or sp.is_unknown(token_id) or sp.is_unused(token_id):\n"
+        "            continue\n"
+        "        if sp.is_byte(token_id):\n"
+        "            base_bytes_np[token_id] = 1\n"
+        "            continue\n"
+        "        piece = sp.id_to_piece(token_id)\n"
+        "        base_bytes_np[token_id] = len(piece.encode('utf-8'))\n"
     )
     assert cr.classify_lut(src) == "CORRECT"
 
@@ -84,6 +100,74 @@ def test_unknown_pattern_classifies_as_unknown():
 def test_buggy_pattern_with_extra_whitespace():
     src = "base_bytes_np[token_id] = len( piece.encode('utf-8') ) + 1\n"
     assert cr.classify_lut(src) == "BUGGY"
+
+
+# ---------------------------------------------------------------------------
+# Three-variant deviation detection (leading_space_plus_one,
+# byte_token_wrong_size, missing_is_unused)
+# ---------------------------------------------------------------------------
+
+
+def test_detector_byte_token_bug():
+    """sp.is_byte branch sized by len(piece.encode('utf-8')) instead of 1."""
+    src = BUGGY_BYTE_TOKEN_FIXTURE.read_text()
+    status, deviations = cr.classify_lut_detailed(src)
+    assert status == "BUGGY"
+    assert "byte_token_wrong_size" in deviations
+    # Only the byte-token bug is present — +1 was reverted and is_unused is intact.
+    assert "leading_space_plus_one" not in deviations
+    assert "missing_is_unused" not in deviations
+
+
+def test_detector_missing_is_unused():
+    """Boundary predicate omits sp.is_unused."""
+    src = BUGGY_MISSING_IS_UNUSED_FIXTURE.read_text()
+    status, deviations = cr.classify_lut_detailed(src)
+    assert status == "BUGGY"
+    assert "missing_is_unused" in deviations
+    assert "leading_space_plus_one" not in deviations
+    assert "byte_token_wrong_size" not in deviations
+
+
+def test_detector_triple_bug():
+    """All three bugs present simultaneously (yahya010 train_gdn_7k.py case)."""
+    src = BUGGY_TRIPLE_FIXTURE.read_text()
+    status, deviations = cr.classify_lut_detailed(src)
+    assert status == "BUGGY"
+    assert set(deviations) == {
+        "leading_space_plus_one",
+        "byte_token_wrong_size",
+        "missing_is_unused",
+    }
+
+
+def test_canonical_not_flagged():
+    """Regression: PR #1727's canonical train_gpt.py still CORRECT under the
+    stricter three-variant classifier."""
+    if not CANONICAL_TRAIN_SCRIPT.exists():
+        pytest.skip(f"Canonical script missing: {CANONICAL_TRAIN_SCRIPT}")
+    src = CANONICAL_TRAIN_SCRIPT.read_text()
+    status, deviations = cr.classify_lut_detailed(src)
+    assert status == "CORRECT"
+    assert deviations == []
+
+
+def test_original_buggy_still_detected():
+    """Regression: the original +1-only fixture is still BUGGY, with
+    deviations = ['leading_space_plus_one'] (no others)."""
+    src = BUGGY_FIXTURE.read_text()
+    status, deviations = cr.classify_lut_detailed(src)
+    assert status == "BUGGY"
+    assert deviations == ["leading_space_plus_one"]
+
+
+def test_classify_lut_backcompat_returns_string():
+    """The single-return classify_lut still exists for callers that only need
+    the status string."""
+    assert cr.classify_lut(BUGGY_FIXTURE.read_text()) == "BUGGY"
+    assert cr.classify_lut(BUGGY_BYTE_TOKEN_FIXTURE.read_text()) == "BUGGY"
+    assert cr.classify_lut(BUGGY_MISSING_IS_UNUSED_FIXTURE.read_text()) == "BUGGY"
+    assert cr.classify_lut(BUGGY_TRIPLE_FIXTURE.read_text()) == "BUGGY"
 
 
 # ---------------------------------------------------------------------------

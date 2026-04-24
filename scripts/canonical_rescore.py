@@ -68,38 +68,172 @@ _OBFUSCATED_RE = re.compile(
     r"[A-Za-z_][\w.]*\.decompress\s*\(\s*[A-Za-z_][\w.]*\.b85decode\s*\(",
     re.DOTALL,
 )
-_BUGGY_LUT_RE = re.compile(r"len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)\s*\+\s*1")
-_CORRECT_LUT_RE = re.compile(
-    r"base_bytes_np\[\s*token_id\s*\]\s*=\s*len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)(?!\s*\+\s*1)"
+
+# --- Property 1: leading-space base_bytes assignment ("+1 or not") ---------
+_LEADING_PLUS1_RE = re.compile(
+    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)\s*\+\s*1"
+)
+_LEADING_NOPLUS_RE = re.compile(
+    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)(?!\s*\+\s*1)"
 )
 
+# --- Property 2: sp.is_byte branch assigns literal 1 -----------------------
+# The ``if sp.is_byte(<id>):`` branch can be followed by either an inline
+# assignment (``base_bytes[i] = 1``) on the next indented line or a block
+# with several statements before ``continue``. We look at the next 1-6
+# indented lines for a ``base_bytes[...] = <rhs>`` assignment.
+_IS_BYTE_BRANCH_RE = re.compile(
+    r"if\s+(?:sp|tokenizer|tok|_sp|spm)?\.?is_byte\s*\(\s*[^)]+\)\s*:\s*\n"
+    r"(?P<body>(?:[ \t]+[^\n]*\n){1,6})"
+)
+_BYTE_TOKEN_ASSIGN_RE = re.compile(
+    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*(?P<rhs>[^\n#]+)"
+)
 
-def classify_lut(src: str) -> str:
-    """Classify a ``train_gpt.py`` source string by its LUT pattern.
+# --- Property 3: boundary predicate includes is_unused --------------------
+# The canonical boundary line looks like
+#     if sp.is_control(tid) or sp.is_unknown(tid) or sp.is_unused(tid):
+# We detect sites by the presence of ``is_control(`` and check the nearby
+# window for ``is_unknown`` and ``is_unused``.
+
+
+def _detect_leading_space(src: str) -> str:
+    """P1 detector: ``base_bytes = len(piece.encode("utf-8"))`` vs ``... + 1``."""
+    if _LEADING_PLUS1_RE.search(src):
+        return "DEVIATES"
+    if _LEADING_NOPLUS_RE.search(src):
+        return "MATCHES_CANONICAL"
+    return "INDETERMINATE"
+
+
+def _detect_byte_token(src: str) -> str:
+    """P2 detector: ``if sp.is_byte(...): base_bytes = 1``.
+
+    Returns ``DEVIATES`` only when a ``sp.is_byte(...)`` branch is located and
+    the assignment inside it is something other than literal ``1`` (e.g.
+    ``len(piece.encode("utf-8"))``). If no ``sp.is_byte`` branch is found at
+    all, returns ``INDETERMINATE`` — the function may handle byte tokens in a
+    different idiom we do not parse, or not at all.
+    """
+    m = _IS_BYTE_BRANCH_RE.search(src)
+    if not m:
+        return "INDETERMINATE"
+    body = m.group("body")
+    assign = _BYTE_TOKEN_ASSIGN_RE.search(body)
+    if not assign:
+        return "INDETERMINATE"
+    rhs = assign.group("rhs").strip().rstrip(";")
+    if rhs == "1":
+        return "MATCHES_CANONICAL"
+    return "DEVIATES"
+
+
+_IS_UNKNOWN_CALL_RE = re.compile(r"is_unknown\s*\(")
+_IS_UNUSED_CALL_RE = re.compile(r"is_unused\s*\(")
+
+
+def _detect_boundary_predicate(src: str) -> str:
+    """P3 detector: boundary predicate includes ``sp.is_unused``.
+
+    Scans every occurrence of ``is_control(`` in the source, grabs a window
+    around it, and checks whether ``is_unknown(`` and ``is_unused(`` calls
+    appear (requiring the opening paren so comment text mentioning
+    "is_unused" does not confuse the detector).
+
+    * If any such window contains both ``is_unknown(`` and ``is_unused(``:
+      ``MATCHES_CANONICAL``.
+    * Else if any contains ``is_unknown(`` but no ``is_unused(``:
+      ``DEVIATES`` (canonical boundary missing ``is_unused``).
+    * Else (no ``is_control(`` at all, or no ``is_unknown(`` nearby):
+      ``INDETERMINATE``.
+    """
+    any_boundary_like = False
+    for m in re.finditer(r"is_control\s*\(", src):
+        start = max(0, m.start() - 120)
+        end = min(len(src), m.end() + 300)
+        window = src[start:end]
+        if not _IS_UNKNOWN_CALL_RE.search(window):
+            continue
+        any_boundary_like = True
+        if _IS_UNUSED_CALL_RE.search(window):
+            return "MATCHES_CANONICAL"
+    if any_boundary_like:
+        return "DEVIATES"
+    return "INDETERMINATE"
+
+
+# Human-readable descriptions for each deviation name. Keyed by the strings
+# that appear in ``lut_bug_detections``.
+BUG_DESCRIPTIONS = {
+    "leading_space_plus_one":
+        "Bakes +1 into LUT for leading-space tokens, causing eval_val_sliding "
+        "to double-count the leading-space byte (#1698 lineage bug).",
+    "byte_token_wrong_size":
+        "sp.is_byte branch sizes byte tokens by len(piece.encode('utf-8')) "
+        "(= 6 for '<0xXX>') instead of the canonical literal 1.",
+    "missing_is_unused":
+        "Boundary predicate omits sp.is_unused; unused tokens are scored as "
+        "if they contributed bytes instead of being treated as zero-byte "
+        "boundaries.",
+}
+
+
+def classify_lut_detailed(src: str) -> tuple[str, list[str]]:
+    """Classify a ``train_gpt.py`` and return the list of deviating properties.
 
     Args:
         src: The full contents of the ``train_gpt.py`` file as a string.
 
     Returns:
-        One of ``"CORRECT"``, ``"BUGGY"``, ``"OBFUSCATED"``, ``"UNKNOWN"``.
+        A tuple ``(status, deviations)``. ``status`` is one of
+        ``CORRECT`` / ``BUGGY`` / ``OBFUSCATED`` / ``UNKNOWN``. ``deviations``
+        is a list of property-name strings drawn from
+        ``{"leading_space_plus_one", "byte_token_wrong_size",
+        "missing_is_unused"}``.
+
+    Classification rules:
+        * Any property DEVIATES ⟹ ``BUGGY``. ``deviations`` lists which.
+        * All three properties MATCH canonical ⟹ ``CORRECT``.
+        * No deviations AND the obfuscation regex matches ⟹ ``OBFUSCATED``.
+        * Otherwise ⟹ ``UNKNOWN``.
 
     Gotchas:
-        LUT pattern detection takes priority over obfuscation detection. A
-        script can import ``lzma`` or call ``base64.b85decode`` for
-        legitimate compression purposes (e.g. PR #1727 ships a JS minifier
-        as a compressed blob) without being obfuscated. We only flag
-        ``OBFUSCATED`` when the LUT regex does not match AND the source
-        contains a chained ``*.decompress(*.b85decode(...))`` expression.
-        Both inline-``exec`` and assign-then-``runpy`` wrapper styles are
-        handled.
+        LUT pattern detection takes priority over obfuscation detection: a
+        script can import ``lzma`` or call ``base64.b85decode`` legitimately
+        (e.g. PR #1727 ships a JS minifier as a compressed blob) without
+        being obfuscated. We only flag ``OBFUSCATED`` when no deviations are
+        found AND the three canonical properties do not all match AND the
+        source contains a chained ``*.decompress(*.b85decode(...))``
+        expression. Both inline-``exec`` and assign-then-``runpy`` wrapper
+        styles are handled.
     """
-    if _BUGGY_LUT_RE.search(src):
-        return "BUGGY"
-    if _CORRECT_LUT_RE.search(src):
-        return "CORRECT"
+    p1 = _detect_leading_space(src)
+    p2 = _detect_byte_token(src)
+    p3 = _detect_boundary_predicate(src)
+
+    deviations: list[str] = []
+    if p1 == "DEVIATES":
+        deviations.append("leading_space_plus_one")
+    if p2 == "DEVIATES":
+        deviations.append("byte_token_wrong_size")
+    if p3 == "DEVIATES":
+        deviations.append("missing_is_unused")
+
+    if deviations:
+        return "BUGGY", deviations
+    if p1 == "MATCHES_CANONICAL" and p2 == "MATCHES_CANONICAL" and p3 == "MATCHES_CANONICAL":
+        return "CORRECT", []
     if _OBFUSCATED_RE.search(src):
-        return "OBFUSCATED"
-    return "UNKNOWN"
+        return "OBFUSCATED", []
+    return "UNKNOWN", []
+
+
+def classify_lut(src: str) -> str:
+    """Classify a ``train_gpt.py`` source string. Returns status only.
+
+    See ``classify_lut_detailed`` for the richer (status, deviations) return.
+    """
+    return classify_lut_detailed(src)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +478,7 @@ def rescore(
         ``scripts/README_canonical_rescore.md``.
     """
     src = train_script.read_text(errors="replace")
-    lut_status = classify_lut(src)
+    lut_status, lut_bug_detections = classify_lut_detailed(src)
 
     counts: Optional[ByteCountResult] = None
     inflation_ratio: Optional[float] = None
@@ -370,15 +504,39 @@ def rescore(
         if counts.canonical_byte_count > 0:
             inflation_ratio = counts.buggy_byte_count / counts.canonical_byte_count
 
-    # Apply the inflation only when the LUT is actually buggy. CORRECT scripts
-    # already report canonical BPB; OBFUSCATED scripts cannot be classified.
+    # Apply the inflation only when the LUT has the leading_space_plus_one
+    # deviation — that is the specific arithmetic the ratio math computes.
+    # A BUGGY PR with only byte_token_wrong_size or missing_is_unused
+    # deviations requires a separate LUT rebuild for an arithmetic correction.
     applied_ratio: Optional[float]
+    inflation_ratio_includes: list[str]
     if lut_status == "CORRECT":
         applied_ratio = 1.0
+        inflation_ratio_includes = []
     elif lut_status == "BUGGY":
-        applied_ratio = inflation_ratio
+        if "leading_space_plus_one" in lut_bug_detections:
+            applied_ratio = inflation_ratio
+            inflation_ratio_includes = ["leading_space_plus_one"]
+            if len(lut_bug_detections) > 1:
+                other = [b for b in lut_bug_detections if b != "leading_space_plus_one"]
+                notes.append(
+                    "inflation_ratio accounts only for leading_space_plus_one; "
+                    "additional deviations present (" + ", ".join(other) + ") "
+                    "would increase the canonical correction further — the reported "
+                    "inferred_canonical_bpb is therefore conservative (an underestimate "
+                    "of the true canonical BPB)."
+                )
+        else:
+            applied_ratio = None
+            inflation_ratio_includes = []
+            notes.append(
+                "BUGGY but no leading_space_plus_one deviation; the +1 "
+                "inflation arithmetic does not apply. A PR-specific LUT "
+                "rebuild is required for an arithmetic BPB correction."
+            )
     else:
         applied_ratio = None
+        inflation_ratio_includes = []
 
     inferred_canonical_bpb: Optional[float] = None
     if reported_bpb is not None and applied_ratio is not None:
@@ -388,10 +546,17 @@ def rescore(
     if inferred_canonical_bpb is not None:
         passes_threshold = inferred_canonical_bpb <= threshold
 
+    detected_bugs_description = "; ".join(
+        BUG_DESCRIPTIONS[name] for name in lut_bug_detections if name in BUG_DESCRIPTIONS
+    )
+
     result = {
         "pr_number": pr_number,
         "script_path": str(train_script),
         "lut_status": lut_status,
+        "lut_bug_detections": lut_bug_detections,
+        "detected_bugs_description": detected_bugs_description,
+        "inflation_ratio_includes": inflation_ratio_includes,
         "reported_bpb": reported_bpb,
         "inflation_ratio": applied_ratio,
         "computed_inflation_ratio": inflation_ratio,
