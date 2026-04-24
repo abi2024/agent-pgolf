@@ -1,7 +1,9 @@
-# Session Summary — 2026-04-23 Autonomous Block
+# Session Summary — 2026-04-23 Autonomous Block + 2026-04-24 Polish Pass
 
 3-phase autonomous block: write exp_001 analysis, build canonical_rescore tool,
 run audit on top-10 PRs, draft three audit docs, push to origin.
+Follow-up polish pass on 2026-04-24: three-commit cleanup addressing the
+ratio discrepancy, tool documentation, and writeup tone.
 
 ## What was done
 
@@ -87,35 +89,72 @@ run audit on top-10 PRs, draft three audit docs, push to origin.
   (canonical=151,080,891 bytes / buggy=176,332,748 bytes), reproducible by
   the published tool.
 
-## Blockers needing your review
+## Polish pass (2026-04-24)
 
-1. **Inflation ratio 1.1671 vs yahya's 1.1746.** The audit doc's "all-token
-   approximation" of 1.1671 matches my tool's output exactly. yahya's
-   reported 1.1746 is 0.75% higher. The audit doc attributes this to
-   "sliding-window subset selection," but my tool *does* use the
-   sliding-window subset (boundary-masked, scored-token-only). I documented
-   the discrepancy in `audit/methodology.md` §3 by reporting the exact tool
-   numbers; the audit conclusions don't change either way (every BUGGY-line
-   PR still inflates by ~17%). Worth a sanity check before publishing.
-2. **OBFUSCATED entries in the top 3.** `audit/results.md` is careful not
-   to assert these are buggy — only that they cannot be statically verified.
-   Your call whether to push harder on the framing ("the only sub-1.05
-   submission with a known LUT was buggy" pattern) or stay maximally
-   neutral.
-3. **PR #1735 lead is large (0.021 BPB).** The "True Top 5" table has #1735
-   at 1.04290 with the next-best at 1.06421. This is a substantial gap. We
-   have no independent reproduction; the canonical claim rests on the
-   author's reported number being correct. The methodology doc notes this
-   explicitly; you may want to consider whether to caveat #1735 more
-   strongly given how much it stands out.
-4. **Submission readiness.** This work is *not* yet packaged as a PR to
+Three commits addressing the 2026-04-23 blockers:
+
+### Pass 1: empirical resolution of the ratio discrepancy
+* Added `--scoring-mode` flag to `scripts/canonical_rescore.py` with three
+  variants: `sliding-window-boundary-masked` (default, what PR #1727's
+  `eval_val_sliding` computes), `all-tokens-boundary-masked` (flat 1:N
+  slice, same mask), `all-tokens-no-mask` (flat 1:N slice, boundary mask
+  replaced with all-ones).
+* **Finding: all three variants give 1.1671 on SP8192 fineweb val.**
+  The sliding-window tile covers the full 1:N span, and
+  `is_boundary[x_prev]` is identically zero over this stream (no
+  control/unknown/unused tokens appear as predecessors). So scoring
+  strategy is **not** the source of the 0.75% gap to yahya's 1.1746.
+* **Root cause identified:** yahya's PR #1734 `train_gdn_7k.py` has a
+  structurally different LUT — byte tokens (`sp.is_byte`) are sized by
+  `len(piece.encode("utf-8"))` (6 bytes for `"<0x00>"`) instead of 1, and
+  `sp.is_unused` tokens are not treated as boundary. Running yahya's
+  exact LUT on the same val stream gives ratio 1.1770 (within 0.2% of
+  the quoted 1.1746; the remaining residual is plausibly val-shard or
+  rounding).
+* 4 new tests (total 14 in `test_canonical_rescore.py`, 56 overall).
+* Methodology doc has a new §4 "Inflation ratio is sensitive to scoring
+  strategy" documenting the three variants, the three-way convergence,
+  and the yahya010 residual-gap explanation.
+* Commit: `b2dcc16 tool: add --scoring-mode flag with three variants; document ratio sensitivity`
+
+### Pass 2: tool documentation
+* Module docstring in `scripts/canonical_rescore.py` expanded with
+  what-it-does / does-NOT-do / algorithm / example blocks.
+* Docstrings added to `classify_lut`, `build_canonical_luts`,
+  `load_val_tokens`, `rescore` (Args/Returns/Gotchas format).
+* All CLI flags now carry explanatory `--help` strings.
+* New `scripts/README_canonical_rescore.md`: purpose, when-to-use,
+  when-NOT-to-use, installation, CLI reference, interpretation guide for
+  JSON output (what to conclude / what NOT to conclude), limitations,
+  test pointer.
+* Commit: `c4de2f9 docs: canonical_rescore README + docstrings + CLI help polish`
+
+### Pass 3: writeup polish
+* `audit/writeup.md` TL;DR surfaces both 1.1671 (tool default) and
+  yahya's 1.1746 and attributes the gap to LUT-construction differences.
+* New "Scope and limitations" section spells out what LUT-verified
+  CORRECT does and does not imply, and flags PR #1735's 0.021 BPB lead
+  as reproduction-pending.
+* Results table now has an explicit "LUT-verified" yes/no column with
+  footnote. Emoji/checkmark decorations stripped for neutral tone.
+* `audit/corrected_leaderboard.md` methodology paragraph mentions both
+  ratios up-front; scope-caveat callout added; Caveats section explicitly
+  rejects asserting obfuscated PRs are buggy.
+* `audit/results.md` OBFUSCATED per-PR entries labeled "Conditional
+  arithmetic (not a claim)" to make if-buggy-then-X hypothetical;
+  #1735 entry carries the reproduction-pending caveat inline.
+* Commit: `4ed570f audit: writeup polish - both ratios documented, scope caveats added, tone neutralized`
+
+## Open items (still unblocked)
+
+1. **Submission readiness.** This work is *not* yet packaged as a PR to
    `openai/parameter-golf`. The `audit/writeup.md` is structured as a PR
    body, but the actual `records/track_non_record_16mb/` placement,
-   submission.json, and PR creation are pending your review.
+   submission.json, and PR creation are pending user review.
 
 ## Git state
 
-* `agent-pgolf` HEAD: `2af49bb` (pushed to origin/main).
+* `agent-pgolf` HEAD: `4ed570f` (after polish pass; pending push to origin).
 * `parameter-golf` HEAD: `6927947` on branch `pr-1727` (restored).
 * Local branches in `parameter-golf` for each fetched PR:
   `pr-1735, pr-1736, pr-1738, pr-1756, pr-1758, pr-1769, pr-1771, pr-1779,
@@ -127,16 +166,22 @@ run audit on top-10 PRs, draft three audit docs, push to origin.
 ## Commit hashes
 
 ```
+4ed570f  audit: writeup polish - both ratios documented, scope caveats added, tone neutralized
+c4de2f9  docs: canonical_rescore README + docstrings + CLI help polish
+b2dcc16  tool: add --scoring-mode flag with three variants; document ratio sensitivity
 2af49bb  audit: Phase 3 draft writeup + methodology + results
 b784d49  audit: Phase 2 results — leaderboard inspection across top-10 PRs
 ffa66e5  tool: canonical_rescore.py for BPB byte-count audit
 21455f1  exp_001: analysis.md — hardware parity confirmed
 ```
 
-All four commits are on `origin/main`.
+Commits `21455f1..2af49bb` (4) are on `origin/main` from the autonomous
+block. Commits `b2dcc16..4ed570f` (3) from the polish pass are local and
+pending push.
 
 ## Files added this session
 
+Autonomous block (2026-04-23):
 ```
 experiments/exp_001/analysis.md
 scripts/canonical_rescore.py
@@ -151,6 +196,23 @@ audit/methodology.md
 audit/results.md
 session_summary.md            ← this file
 ```
+
+Polish pass (2026-04-24):
+```
+scripts/README_canonical_rescore.md   ← new
+scripts/canonical_rescore.py          ← +docstrings, +--scoring-mode, +CLI help
+tests/test_canonical_rescore.py       ← +4 scoring-mode tests (14 total)
+audit/methodology.md                  ← +§4 ratio sensitivity section
+audit/writeup.md                      ← TL;DR + scope + attribution revised
+audit/corrected_leaderboard.md        ← LUT-verified column + neutral caveats
+audit/results.md                      ← conditional arithmetic language
+```
+
+## Test count
+
+56 tests pass (42 pre-existing + 10 from autonomous block +
+4 scoring-mode tests from the polish pass). Run with
+`python -m pytest tests/ -q`.
 
 ## Did NOT do (per prompt directive)
 
