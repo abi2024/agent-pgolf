@@ -118,7 +118,91 @@ tokenizer + val data.
 
 ---
 
-## 4. Scope and what this audit does **not** claim
+## 4. Inflation ratio is sensitive to scoring strategy
+
+The inflation ratio `buggy / canonical` depends on which y-tokens are
+scored and whether the eval-time boundary mask is applied. The tool
+supports three modes via `--scoring-mode`:
+
+| Mode | y-tokens scored | `boundary_mask` | Models what |
+|------|-----------------|-----------------|-------------|
+| `sliding-window-boundary-masked` (default) | Sliding-window tile (`seq_len=2048`, `stride=64`, last window trimmed) | `~is_boundary[x_prev]` | What PR #1727's `eval_val_sliding` actually computes — the number the buggy eval pipeline reports |
+| `all-tokens-boundary-masked` | Flat `val_tokens[1:N]` slice | `~is_boundary[x_prev]` | Generic "score every token, gate by prev" computation |
+| `all-tokens-no-mask` | Flat `val_tokens[1:N]` slice | `1` (all ones) | Naive "every leading-space adds one byte" no-gate computation |
+
+In all three modes `buggy − canonical = sum(has_leading_space[y])` (the
+LUT adds +1 per leading-space token regardless of gate), so the three
+ratios differ only through the canonical denominator.
+
+**Empirical values on SP8192 fineweb val (40,540,803 tokens):**
+
+| Mode | canonical bytes | buggy bytes | ratio |
+|------|-----------------|-------------|-------|
+| `sliding-window-boundary-masked` | 151,080,891 | 176,332,748 | **1.1671** |
+| `all-tokens-boundary-masked` | 151,080,891 | 176,332,748 | **1.1671** |
+| `all-tokens-no-mask` | 151,080,891 | 176,332,748 | **1.1671** |
+
+The three numbers coincide on this validation stream for two reasons:
+
+1. The sliding windows with the last-window-trimmed logic tile the full
+   `val_tokens[1:N]` span (`last_end = total_tokens`), so the sliding-window
+   and all-tokens subsets are identical.
+2. `is_boundary[x_prev]` is identically zero over this stream — the
+   fineweb val tokens never contain a control/unknown/unused SentencePiece
+   token as a predecessor. The boundary mask is therefore a no-op on this
+   data.
+
+### Why yahya010's 1.1746 differs by 0.75%
+
+yahya010's PR #1734 closure quoted a ratio of 1.1746. The three variants
+above converge to 1.1671 on the same val data. The residual 0.75% gap is
+**not** a scoring-strategy artifact; it comes from the LUT used in PR
+#1734 itself, which has two additional differences from the canonical
+`build_sentencepiece_luts` in PR #1727:
+
+* **Byte tokens (`sp.is_byte`).** Canonical sets `base_bytes = 1`.
+  PR #1734's `train_gdn_7k.py:213` instead uses
+  `base_bytes[i] = len(piece.encode("utf-8"))`, which for a byte piece
+  `"<0x00>"` evaluates to 6 rather than 1. There are ~269,000 byte tokens
+  in val, contributing ~1.35M extra bytes to the buggy numerator.
+* **`is_unused` gating.** Canonical treats `sp.is_unused` tokens as
+  boundary (zero byte contribution). PR #1734's boundary predicate uses
+  only `sp.is_control | sp.is_unknown`, so any `is_unused` tokens in val
+  (or as predecessors) are scored normally.
+
+Running yahya's exact LUT against the same val stream gives
+`buggy = 177,828,845`, `canonical (sp.decode_ids-based) = 151,080,866`,
+ratio = 1.1770 — still 0.2% above the quoted 1.1746 but materially closer.
+The remaining residual is plausibly a rounding / val-shard-variant
+difference that we cannot resolve without the exact val shard yahya used.
+
+### Which variant should a reviewer cite?
+
+* To characterize "what does PR #1727's eval pipeline overcount?" — use
+  `sliding-window-boundary-masked`. The tool defaults to this because it
+  is the ratio that corresponds to the reported BPB of the buggy
+  submissions we are correcting.
+* To characterize "how much does a naive count-every-leading-space
+  method differ from a sp.decode-based ground truth?" — use
+  `all-tokens-no-mask`. On SP8192 fineweb val this is numerically the
+  same as the default.
+* yahya's 1.1746 is a *different* ratio: it is his own buggy-LUT output
+  divided by his own sp.decode ground truth. It characterizes the same
+  bug (baked +1 for leading-space tokens, double-counted at eval), but
+  with additional LUT-construction differences folded in. Both ratios
+  point to the same underlying defect in the #1698 lineage; the numerical
+  correction we apply to any specific PR's BPB depends on *that PR's*
+  LUT and eval scoring.
+
+Bottom line: both numbers are valid characterizations of the same bug.
+The one the static tool reports (1.1671) is the one that applies to the
+current buggy-but-not-obfuscated PRs because they inherited the #1727
+LUT shape; yahya's 1.1746 applies to his own #1734 where the LUT was
+additionally idiosyncratic.
+
+---
+
+## 5. Scope and what this audit does **not** claim
 
 * **Cross-entropy is treated as given.** We do not re-run any model. The
   arithmetic correction `canonical_bpb = reported_bpb × inflation_ratio`
@@ -144,7 +228,7 @@ tokenizer + val data.
 
 ---
 
-## 5. Why the static-only design is correct here
+## 6. Why the static-only design is correct here
 
 The byte-count denominator of BPB depends only on the tokenizer and the
 val-token sequence. It does *not* depend on the model checkpoint, the
@@ -160,7 +244,7 @@ inspection.
 
 ---
 
-## 6. Tool reference
+## 7. Tool reference
 
 ```bash
 python scripts/canonical_rescore.py \

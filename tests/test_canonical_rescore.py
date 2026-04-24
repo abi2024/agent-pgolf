@@ -136,6 +136,68 @@ def test_byte_count_inflation_ratio_real_data(luts, val_tokens):
 
 
 # ---------------------------------------------------------------------------
+# Scoring-mode variants (see audit/methodology.md §4)
+# ---------------------------------------------------------------------------
+
+
+def test_scoring_mode_sliding_window_boundary_masked(luts, val_tokens):
+    """Default mode — matches PR #1727's eval_val_sliding. Should be ~1.1671."""
+    base_bytes, has_leading_space, is_boundary = luts
+    counts = cr.compute_byte_counts(
+        val_tokens, base_bytes, has_leading_space, is_boundary,
+        seq_len=2048, stride=64,
+        scoring_mode="sliding-window-boundary-masked",
+    )
+    ratio = counts.buggy_byte_count / counts.canonical_byte_count
+    assert 1.166 <= ratio <= 1.168, f"sliding-window ratio {ratio:.6f} outside [1.166, 1.168]"
+    assert counts.num_windows > 0
+
+
+def test_scoring_mode_all_tokens_boundary_masked(luts, val_tokens):
+    """Flat 1:N slice with boundary mask. Identical to sliding-window on SP8192 val
+    because the last trimmed window covers all tokens and no boundary tokens
+    (control/unknown/unused) appear as predecessors in fineweb val."""
+    base_bytes, has_leading_space, is_boundary = luts
+    counts = cr.compute_byte_counts(
+        val_tokens, base_bytes, has_leading_space, is_boundary,
+        seq_len=2048, stride=64,
+        scoring_mode="all-tokens-boundary-masked",
+    )
+    ratio = counts.buggy_byte_count / counts.canonical_byte_count
+    assert 1.166 <= ratio <= 1.168, f"all-tokens (masked) ratio {ratio:.6f} outside [1.166, 1.168]"
+    assert counts.num_windows == 0  # not window-based
+
+
+def test_scoring_mode_all_tokens_no_mask(luts, val_tokens):
+    """Flat 1:N slice, boundary mask replaced by all-ones. On SP8192 fineweb val
+    this is empirically equal to the masked variants because (ls & is_boundary[x])
+    is zero on this stream — see methodology.md §4 for the residual-gap
+    analysis vs yahya's 1.1746."""
+    base_bytes, has_leading_space, is_boundary = luts
+    counts = cr.compute_byte_counts(
+        val_tokens, base_bytes, has_leading_space, is_boundary,
+        seq_len=2048, stride=64,
+        scoring_mode="all-tokens-no-mask",
+    )
+    ratio = counts.buggy_byte_count / counts.canonical_byte_count
+    # Empirical: 1.1671 on SP8192 val (same as masked variants). The 1.173-1.176
+    # range would be expected if yahya's 1.1746 were a pure no-mask artefact;
+    # since it is not, the residual-gap explanation (yahya used a different LUT
+    # with byte-token and is_unused handling bugs) is documented in methodology.
+    assert 1.166 <= ratio <= 1.168, f"all-tokens no-mask ratio {ratio:.6f} outside [1.166, 1.168]"
+
+
+def test_scoring_mode_unknown_raises(luts, val_tokens):
+    base_bytes, has_leading_space, is_boundary = luts
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        cr.compute_byte_counts(
+            val_tokens, base_bytes, has_leading_space, is_boundary,
+            seq_len=2048, stride=64, scoring_mode="not-a-real-mode",
+        )
+
+
+# ---------------------------------------------------------------------------
 # End-to-end rescore
 # ---------------------------------------------------------------------------
 

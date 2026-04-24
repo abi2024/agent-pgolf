@@ -143,6 +143,13 @@ def load_val_tokens(pattern: str) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+SCORING_MODES = (
+    "sliding-window-boundary-masked",
+    "all-tokens-boundary-masked",
+    "all-tokens-no-mask",
+)
+
+
 @dataclass
 class ByteCountResult:
     canonical_byte_count: int
@@ -150,6 +157,7 @@ class ByteCountResult:
     leading_space_token_count: int
     scored_token_count: int
     num_windows: int
+    scoring_mode: str = "sliding-window-boundary-masked"
 
 
 def compute_byte_counts(
@@ -159,49 +167,67 @@ def compute_byte_counts(
     is_boundary: np.ndarray,
     seq_len: int,
     stride: int,
+    scoring_mode: str = "sliding-window-boundary-masked",
 ) -> ByteCountResult:
-    """Compute canonical and buggy byte totals on the sliding-window scored subset.
+    """Compute canonical and buggy byte totals under the chosen scoring mode.
 
-    Mirrors ``eval_val_sliding`` in train_gpt.py (PR #1727 line ~2039-2050) without
-    running the model. Each scored y-token contributes ``base[y] + (has_leading_space[y]
-    & ~is_boundary[x_prev])`` bytes canonically; the buggy LUT inflates this by
-    exactly +1 per leading-space token (regardless of prev), so
-    ``buggy_total = canonical_total + sum(has_leading_space[y_scored])``.
+    Three modes are supported:
 
-    The scored y-positions across all windows tile val_tokens[1:total_tokens+1]
-    contiguously, so the computation collapses to two array sums.
+    * ``sliding-window-boundary-masked`` (default): scored y-tokens = the exact
+      subset the upstream ``eval_val_sliding`` in PR #1727 actually scores
+      (``seq_len=2048, stride=64`` windows, last window trimmed to end of val).
+      Leading-space bytes are gated by ``~is_boundary[x_prev]`` — the same gate
+      the eval loop applies. This is what PR #1727's eval pipeline reports.
+    * ``all-tokens-boundary-masked``: scored y-tokens = every position in the
+      flat slice ``val_tokens[1:N]``. Same boundary-mask gate. On val data
+      where the sliding windows already tile the full stream (the SP8192 case),
+      this is numerically identical to sliding-window-boundary-masked.
+    * ``all-tokens-no-mask``: scored y-tokens = flat ``val_tokens[1:N]`` slice,
+      with boundary_mask = 1 everywhere (every leading-space byte is counted).
+      This corresponds to the "decode the whole stream and count UTF-8 bytes"
+      naive ground-truth that yahya010 used in the PR #1734 closure note.
+
+    The buggy byte total always equals canonical + ``sum(has_leading_space[y])``
+    regardless of the mask — the LUT adds +1 per leading-space token, and the
+    eval still adds the gated +1 on top, so the per-token delta is exactly one.
+    The inflation *ratio* varies because the canonical denominator varies.
     """
     if val_tokens.ndim != 1:
         raise ValueError("val_tokens must be 1-D")
+    if scoring_mode not in SCORING_MODES:
+        raise ValueError(f"unknown scoring_mode {scoring_mode!r}; valid: {SCORING_MODES}")
     total_tokens = int(val_tokens.shape[0]) - 1
     context_size = seq_len - stride
     if context_size < 0:
         raise ValueError(f"seq_len ({seq_len}) must be >= stride ({stride})")
 
-    # Replicate upstream window selection for the window count + sanity check.
-    window_starts = [
-        ws for ws in range(0, total_tokens, stride) if ws + context_size < total_tokens
-    ]
-    num_windows = len(window_starts)
-    if num_windows == 0:
-        return ByteCountResult(0, 0, 0, 0, 0)
-
-    # Verify scored tokens form a contiguous tiling [1, total_tokens] in y space.
-    expected_scored = total_tokens  # full tile when num_windows >= 1
-    last_ws = window_starts[-1]
-    last_end = min(last_ws + seq_len, total_tokens)
-    last_scored_end = last_end  # y goes through val_tokens[last_end] (inclusive of position last_end)
-    if last_scored_end != total_tokens:
-        # Trim to whatever the windows actually cover.
-        expected_scored = last_scored_end
+    if scoring_mode.startswith("sliding-window"):
+        # Replicate upstream window selection for the window count + tile end.
+        window_starts = [
+            ws for ws in range(0, total_tokens, stride) if ws + context_size < total_tokens
+        ]
+        num_windows = len(window_starts)
+        if num_windows == 0:
+            return ByteCountResult(0, 0, 0, 0, 0, scoring_mode=scoring_mode)
+        last_ws = window_starts[-1]
+        last_end = min(last_ws + seq_len, total_tokens)
+        expected_scored = last_end
+    else:
+        # "all-tokens-*" variants score every position in val_tokens[1:N].
+        num_windows = 0
+        expected_scored = total_tokens
 
     y = val_tokens[1 : expected_scored + 1].astype(np.int64, copy=False)
     x = val_tokens[0 : expected_scored].astype(np.int64, copy=False)
 
     bb = base_bytes[y].astype(np.int64)
     ls = has_leading_space[y]
-    pb = is_boundary[x]
-    canonical_total = int(bb.sum()) + int((ls & ~pb).sum())
+    if scoring_mode.endswith("no-mask"):
+        mask = np.ones_like(ls)
+    else:
+        pb = is_boundary[x]
+        mask = ~pb
+    canonical_total = int(bb.sum()) + int((ls & mask).sum())
     leading_space_total = int(ls.sum())
     buggy_total = canonical_total + leading_space_total
 
@@ -211,6 +237,7 @@ def compute_byte_counts(
         leading_space_token_count=leading_space_total,
         scored_token_count=int(expected_scored),
         num_windows=num_windows,
+        scoring_mode=scoring_mode,
     )
 
 
@@ -230,6 +257,7 @@ def rescore(
     threshold: float = 1.0738,
     max_val_tokens: Optional[int] = None,
     skip_byte_count: bool = False,
+    scoring_mode: str = "sliding-window-boundary-masked",
 ) -> dict:
     src = train_script.read_text(errors="replace")
     lut_status = classify_lut(src)
@@ -252,7 +280,8 @@ def rescore(
             val_tokens = val_tokens[:max_val_tokens]
             notes.append(f"Truncated val tokens to {max_val_tokens} for fast inspection.")
         counts = compute_byte_counts(
-            val_tokens, base_bytes, has_leading_space, is_boundary, seq_len, stride
+            val_tokens, base_bytes, has_leading_space, is_boundary, seq_len, stride,
+            scoring_mode=scoring_mode,
         )
         if counts.canonical_byte_count > 0:
             inflation_ratio = counts.buggy_byte_count / counts.canonical_byte_count
@@ -287,6 +316,7 @@ def rescore(
         "merged_sota_threshold": threshold,
         "seq_len": seq_len,
         "stride": stride,
+        "scoring_mode": scoring_mode,
     }
     if counts is not None:
         result["canonical_byte_count"] = counts.canonical_byte_count
@@ -319,6 +349,16 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Truncate val data (for fast smoke tests; do not use for audit)")
     p.add_argument("--skip-byte-count", action="store_true",
                    help="Only run static LUT classification; skip the byte computation")
+    p.add_argument("--scoring-mode", type=str, default="sliding-window-boundary-masked",
+                   choices=list(SCORING_MODES),
+                   help=(
+                       "Which y-token subset + boundary-mask policy to use for the "
+                       "byte totals. 'sliding-window-boundary-masked' (default) "
+                       "mirrors PR #1727's eval_val_sliding exactly and yields the "
+                       "ratio the eval pipeline would report. 'all-tokens-no-mask' "
+                       "mirrors yahya010's 'decode the full stream' ground-truth "
+                       "used in the PR #1734 closure. See audit/methodology.md §4."
+                   ))
     p.add_argument("--output", type=Path, default=None,
                    help="Write JSON to this path (in addition to stdout)")
     return p
@@ -337,6 +377,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         threshold=args.threshold,
         max_val_tokens=args.max_val_tokens,
         skip_byte_count=args.skip_byte_count,
+        scoring_mode=args.scoring_mode,
     )
     text = json.dumps(result, indent=2)
     if args.output:
