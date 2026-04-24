@@ -1,17 +1,44 @@
 """Canonical BPB byte-count audit tool for Parameter Golf.
 
-Statically inspects a candidate ``train_gpt.py`` for the buggy ``+1`` pattern in
-``build_sentencepiece_luts`` (or for lzma/base85 obfuscation), then computes the
-canonical and buggy byte totals on the exact sliding-window scored-token subset
-(``seq_len=2048, stride=64`` by default). The inflation ratio is
-``buggy / canonical`` and the inferred canonical BPB for a buggy PR is
-``reported_bpb * inflation_ratio``.
+**What it does.** A static audit of the ``build_sentencepiece_luts`` byte-count
+bug in Parameter Golf PRs descended from the #1698 lineage. The tool
+classifies each ``train_gpt.py`` as CORRECT / BUGGY / OBFUSCATED / UNKNOWN,
+and for non-obfuscated scripts it computes the canonical and buggy byte
+totals on the exact scored-token subset the eval loop would use. The
+inflation ratio is ``buggy / canonical``; for a BUGGY script the inferred
+canonical BPB is ``reported_bpb * inflation_ratio``.
 
-No GPU, no model checkpoint required. The arithmetic relies only on the
-tokenizer and validation tokens — the cross-entropy numerator is independent of
-the LUT bug, so the correction factor applies to the byte denominator only.
+**What it does NOT do.** The tool only inspects the byte-count LUT. It does
+not verify that ``eval_val_sliding`` itself is canonical (the eval loop is
+assumed faithful; differences there are out of scope). It does not verify
+that a reported BPB was produced by the submitted ``train_gpt.py`` against
+an unmodified val shard — the arithmetic correction assumes the numerator
+(cross-entropy loss in nats) was correctly measured by the submitter. It
+does not validate the trained model artifact, hyperparameters, or any
+other aspect of submission integrity beyond the LUT.
 
-See ``knowledge/measurement_integrity_audit.md`` for the full methodology.
+**Algorithm.**
+1. Regex-classify the LUT: look for ``len(piece.encode("utf-8")) + 1``
+   (BUGGY), the bare ``len(piece.encode("utf-8"))`` assignment (CORRECT),
+   or a ``*.decompress(*.b85decode(...))`` wrapper (OBFUSCATED).
+2. For non-obfuscated scripts, build the canonical LUT from the SP model
+   and the scored-token subset from the val shard.
+3. Collapse the per-window byte sum into two array reductions over
+   ``val_tokens[1:N]``; the buggy total is ``canonical + sum(has_leading_space[y])``.
+
+**Example usage.**
+::
+
+    python scripts/canonical_rescore.py \\
+        --train-script <pr-train_gpt.py> \\
+        --tokenizer    data/tokenizers/fineweb_8192_bpe.model \\
+        --val-data     'data/datasets/fineweb10B_sp8192/fineweb_val_*.bin' \\
+        --reported-bpb 1.02840 \\
+        --pr-number    1758
+
+See ``scripts/README_canonical_rescore.md`` for a full CLI reference and
+``audit/methodology.md`` for the math derivation (in particular §4 on why
+the inflation ratio depends on the scoring strategy).
 """
 from __future__ import annotations
 
@@ -48,14 +75,23 @@ _CORRECT_LUT_RE = re.compile(
 
 
 def classify_lut(src: str) -> str:
-    """Return one of CORRECT, BUGGY, OBFUSCATED, UNKNOWN.
+    """Classify a ``train_gpt.py`` source string by its LUT pattern.
 
-    LUT pattern detection takes priority: a script can mention lzma/b85decode
-    for legitimate compression purposes (e.g. PR #1727 wraps a JS minifier
-    output) without being obfuscated. We only flag OBFUSCATED when the LUT
-    cannot be inspected because the module body is wrapped in an
-    ``exec(lzma.decompress(b85decode(...)))`` call AND no readable LUT pattern
-    is present.
+    Args:
+        src: The full contents of the ``train_gpt.py`` file as a string.
+
+    Returns:
+        One of ``"CORRECT"``, ``"BUGGY"``, ``"OBFUSCATED"``, ``"UNKNOWN"``.
+
+    Gotchas:
+        LUT pattern detection takes priority over obfuscation detection. A
+        script can import ``lzma`` or call ``base64.b85decode`` for
+        legitimate compression purposes (e.g. PR #1727 ships a JS minifier
+        as a compressed blob) without being obfuscated. We only flag
+        ``OBFUSCATED`` when the LUT regex does not match AND the source
+        contains a chained ``*.decompress(*.b85decode(...))`` expression.
+        Both inline-``exec`` and assign-then-``runpy`` wrapper styles are
+        handled.
     """
     if _BUGGY_LUT_RE.search(src):
         return "BUGGY"
@@ -72,12 +108,26 @@ def classify_lut(src: str) -> str:
 
 
 def build_canonical_luts(tokenizer_path: Path, vocab_size: Optional[int] = None):
-    """Build the canonical LUTs from a SentencePiece model.
+    """Build the canonical SentencePiece byte LUTs used by ``eval_val_sliding``.
 
-    Returns (base_bytes, has_leading_space, is_boundary) as numpy arrays.
-    The canonical LUT contains ``len(piece_stripped.encode('utf-8'))`` only
-    — no +1 for leading-space tokens (that addition lives in the eval loop,
-    gated by the previous token being non-boundary).
+    Args:
+        tokenizer_path: Path to the SentencePiece ``.model`` file.
+        vocab_size: Optional override. If larger than the SP vocab, the arrays
+            are padded with zeros to that size (matches upstream behaviour
+            when the model's vocab is smaller than the padded embedding).
+
+    Returns:
+        A tuple ``(base_bytes, has_leading_space, is_boundary)`` of numpy
+        arrays, shape ``[table_size]``. ``base_bytes`` stores the canonical
+        UTF-8 byte length per token (with leading ``▁`` stripped and no +1);
+        ``has_leading_space`` marks pieces that begin with ``▁``;
+        ``is_boundary`` marks control/unknown/unused tokens.
+
+    Gotchas:
+        This is the canonical "no +1 in LUT" version. The +1 for leading
+        spaces is added at eval time, gated by ``~is_boundary[x_prev]``. A
+        LUT that bakes the +1 in (the #1698 bug) double-counts when combined
+        with the standard eval loop.
     """
     import sentencepiece as spm
 
@@ -112,9 +162,21 @@ def build_canonical_luts(tokenizer_path: Path, vocab_size: Optional[int] = None)
 
 
 def load_val_tokens(pattern: str) -> np.ndarray:
-    """Read fineweb val .bin shards. Mirrors ``load_data_shard`` in train_gpt.py.
+    """Load fineweb val shards into a 1-D numpy array of uint16 token ids.
 
-    Header: 256 int32 (1024 bytes). Tokens follow as little-endian uint16.
+    Args:
+        pattern: Glob, explicit path, or directory. For a directory the tool
+            expands to ``fineweb_val_*.bin``.
+
+    Returns:
+        A flat numpy array of uint16 token ids, shards concatenated in sorted
+        order.
+
+    Gotchas:
+        Mirrors ``load_data_shard`` in the upstream ``train_gpt.py``. The
+        shard format is a 256-int32 header (magic ``20240520``, version
+        ``1``, token count, 253 zero-padded) followed by ``n`` little-endian
+        uint16 tokens. Shards that don't match the magic/version raise.
     """
     paths = sorted(glob.glob(pattern))
     if not paths:
@@ -259,6 +321,28 @@ def rescore(
     skip_byte_count: bool = False,
     scoring_mode: str = "sliding-window-boundary-masked",
 ) -> dict:
+    """End-to-end LUT classification + byte-count rescore.
+
+    Args:
+        train_script: Path to the candidate ``train_gpt.py``.
+        tokenizer: Path to the matching SentencePiece ``.model``.
+        val_data: Glob / path / directory for fineweb val ``.bin`` shards.
+        seq_len, stride: Upstream eval-loop parameters (default 2048 / 64).
+        reported_bpb: Submitter-reported ``val_bpb``. If given and the script
+            is BUGGY, ``inferred_canonical_bpb = reported_bpb * ratio``.
+        pr_number: Optional int to embed in the output JSON.
+        threshold: Upper bound for ``passes_merged_sota_threshold`` (default
+            1.0738 — one record-class margin under the current merged SOTA).
+        max_val_tokens: Truncate the val stream to this many tokens (for
+            fast smoke tests; must NOT be set for an audit run).
+        skip_byte_count: Classify the LUT only; do not load val data.
+        scoring_mode: One of ``SCORING_MODES`` — see ``compute_byte_counts``.
+
+    Returns:
+        A dict with the LUT classification, byte totals, inflation ratio,
+        inferred canonical BPB, and threshold verdict. Full schema is in
+        ``scripts/README_canonical_rescore.md``.
+    """
     src = train_script.read_text(errors="replace")
     lut_status = classify_lut(src)
 
@@ -335,16 +419,30 @@ def rescore(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--train-script", type=Path, required=True)
-    p.add_argument("--tokenizer", type=Path, required=True)
+    p = argparse.ArgumentParser(
+        description=__doc__.split("\n\n")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--train-script", type=Path, required=True,
+                   help="Path to the candidate train_gpt.py to inspect.")
+    p.add_argument("--tokenizer", type=Path, required=True,
+                   help="Path to the matching SentencePiece .model file.")
     p.add_argument("--val-data", type=str, required=True,
-                   help="Path or glob for fineweb val .bin files")
-    p.add_argument("--seq-len", type=int, default=2048)
-    p.add_argument("--stride", type=int, default=64)
-    p.add_argument("--reported-bpb", type=float, default=None)
-    p.add_argument("--pr-number", type=int, default=None)
-    p.add_argument("--threshold", type=float, default=1.0738)
+                   help="Glob or path for fineweb val .bin shards (e.g. "
+                        "'data/datasets/fineweb10B_sp8192/fineweb_val_*.bin').")
+    p.add_argument("--seq-len", type=int, default=2048,
+                   help="Sliding-window length, matching eval_val_sliding (default 2048).")
+    p.add_argument("--stride", type=int, default=64,
+                   help="Sliding-window stride, matching eval_val_sliding (default 64).")
+    p.add_argument("--reported-bpb", type=float, default=None,
+                   help="Submitter-reported val_bpb. When set with a BUGGY "
+                        "script, the tool emits inferred_canonical_bpb = "
+                        "reported_bpb * inflation_ratio.")
+    p.add_argument("--pr-number", type=int, default=None,
+                   help="Optional PR number to embed in the output JSON.")
+    p.add_argument("--threshold", type=float, default=1.0738,
+                   help="Upper bound for passes_merged_sota_threshold "
+                        "(default 1.0738 — one record-class margin below SOTA).")
     p.add_argument("--max-val-tokens", type=int, default=None,
                    help="Truncate val data (for fast smoke tests; do not use for audit)")
     p.add_argument("--skip-byte-count", action="store_true",
