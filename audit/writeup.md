@@ -14,27 +14,34 @@
   `build_sentencepiece_luts` in the #1698 lineage bakes a `+1` into the byte
   LUT for leading-space tokens, while `eval_val_sliding` then adds the same
   `+1` again, double-counting.
-* That double-count inflates the byte denominator of BPB by **+16.71%** on the
-  full SP8192 fineweb val shard (151,080,891 canonical vs 176,332,748 buggy
-  bytes — exact tool output, scored over 633,420 sliding windows of
-  `seq_len=2048, stride=64`). Reported buggy BPBs translate to canonical BPBs
-  via `canonical = reported × 1.1671`.
+* That double-count inflates the byte denominator of BPB by **~16.71%** on
+  the sliding-window scored subset that PR #1727's `eval_val_sliding`
+  actually uses (151,080,891 canonical vs 176,332,748 buggy bytes on SP8192
+  fineweb val, 633,420 windows of `seq_len=2048, stride=64`). yahya010's
+  closure quoted **~17.46%** against a different reference — his own
+  #1734 LUT applied to the decoded-stream ground truth. Both ratios
+  characterize the same underlying bug; the small numerical difference is
+  a scoring-strategy + LUT-construction artefact, documented in
+  `audit/methodology.md` §4. Reported buggy BPBs translate to canonical
+  BPBs via `canonical = reported × inflation_ratio` where the ratio is
+  whichever one matches the PR's own scoring.
 * We publish `scripts/canonical_rescore.py`: a static LUT inspection +
   byte-count tool that requires no GPU, no checkpoint, and no reproduction
-  run. Drop in any `train_gpt.py` and it returns the LUT classification, the
-  exact inflation ratio over the actual scored-token subset, and the
-  inferred canonical BPB.
+  run. Drop in any `train_gpt.py` and it returns the LUT classification,
+  the exact inflation ratio over the actual scored-token subset, and the
+  inferred canonical BPB. The tool supports three `--scoring-mode`
+  variants so reviewers can reproduce both the 1.1671 and 1.1746 numbers.
 * Applying the tool to the **top 10 open PRs by reported BPB** as of
-  2026-04-23: 6 are CORRECT (canonical), 4 are OBFUSCATED
+  2026-04-23: 6 are CORRECT (canonical LUT verified), 4 are OBFUSCATED
   (`lzma.decompress(base64.b85decode(...))` — LUT cannot be verified
-  statically). The verified correct-LUT frontier is **PR #1735** (AjAnubolu,
-  1.04290), followed by the cluster of 1.064-1.071 PRs anchored by the
-  reproducible PR #1727 stack.
+  statically). The LUT-verified correct-LUT frontier is **PR #1735**
+  (AjAnubolu, 1.04290), followed by the cluster of 1.064-1.071 PRs
+  anchored by the reproducible PR #1727 stack.
 
 This is a **tooling and methodology contribution**, not a disqualification
 petition. The intent is to give future submitters a one-command self-check
 ("did I inherit the #1698 LUT bug?") and to help reviewers separate
-verified-canonical results from unverified ones.
+LUT-verified results from unverified ones.
 
 ---
 
@@ -83,6 +90,43 @@ Hardware parity is anchored by exp_001: a verbatim PR #1727 reproduction on
 3-seed mean of 1.07217 — confirming our toolchain (torch 2.8.0+cu128) sees
 the same numbers as upstream and that the audit's analytic correction can
 be trusted. See `experiments/exp_001/analysis.md`.
+
+---
+
+## Scope and limitations
+
+What "LUT-verified CORRECT" does and does not mean:
+
+* **Does mean** the `build_sentencepiece_luts` function in the PR's
+  `train_gpt.py` uses the canonical `len(piece.encode("utf-8"))` pattern
+  (no `+1` for leading-space tokens) and is not wrapped in
+  `lzma.decompress(base64.b85decode(...))`.
+* **Does not imply** the model artifact the PR ships achieves its reported
+  BPB. The tool verifies the LUT only; the cross-entropy numerator of BPB
+  is taken as given.
+* **Does not imply** that `eval_val_sliding` itself is canonical. A PR
+  that modified the eval loop would not be caught by this tool. We assume
+  upstream-faithful eval logic.
+* **Does not rule out** other measurement irregularities — modified val
+  shards, different tokenizers, custom BPB definitions. Independent
+  reproduction remains the gold standard for a contested record.
+
+What the OBFUSCATED verdict does and does not mean:
+
+* **Does mean** the tool's static regex found a `*.decompress(*.b85decode(...))`
+  chain and could not locate a readable `build_sentencepiece_luts`
+  implementation.
+* **Does not mean** the PR is buggy. The OBFUSCATED verdict is neutral;
+  verifying the LUT inside the wrapper requires sandbox execution, which
+  is out of scope for this audit.
+
+PR #1735's **0.021 BPB lead** over the next-best CORRECT result (#1779 at
+1.06421) is sufficiently large that independent reproduction is warranted
+before treating it as authoritative for record-class comparisons. The tool
+verifies only the LUT, not the full training pipeline; a wide gap like
+this could be real or could reflect some other path that the tool does not
+inspect. The frontier PR #1735 reading is "LUT-verified, reproduction
+pending", not "verified as the true top".
 
 ---
 
@@ -135,29 +179,39 @@ green).
 
 ## Results (full version: `audit/results.md` and `audit/corrected_leaderboard.md`)
 
-| Rank | PR | Author | Reported | LUT | Canonical |
-|------|----|--------|---------|-----|-----------|
-| 1 | #1785 | OE-GOD | 1.01925 | OBFUSCATED | unverified |
-| 2 | #1758 | kilojoules | 1.02840 | OBFUSCATED | unverified |
-| 3 | #1738 | alertcat | 1.03540 | OBFUSCATED | unverified |
-| 4 | #1735 | AjAnubolu | 1.04290 | ✅ CORRECT | **1.04290** |
-| 5 | #1779 | leon2k2k2k | 1.06421 | ✅ CORRECT | 1.06421 |
-| 6 | #1769 | dexhunter | 1.06453 | ✅ CORRECT | 1.06453 |
-| 7 | #1756 | romeerp | 1.06505 | ✅ CORRECT | 1.06505 |
-| 8 | #1771 | bigbag | 1.06513 | OBFUSCATED | unverified |
-| 9 | #1736 | dexhunter | 1.06549 | ✅ CORRECT | 1.06549 |
-| 10 | #1784 | renqianluo | 1.07081 | ✅ CORRECT | 1.07081 |
+| Rank | PR | Author | Reported | LUT status | LUT-verified† | Canonical BPB |
+|------|----|--------|---------|-----|:---:|-----------|
+| 1 | #1785 | OE-GOD | 1.01925 | OBFUSCATED | no | unverified |
+| 2 | #1758 | kilojoules | 1.02840 | OBFUSCATED | no | unverified |
+| 3 | #1738 | alertcat | 1.03540 | OBFUSCATED | no | unverified |
+| 4 | #1735 | AjAnubolu | 1.04290 | CORRECT | yes | **1.04290** |
+| 5 | #1779 | leon2k2k2k | 1.06421 | CORRECT | yes | 1.06421 |
+| 6 | #1769 | dexhunter | 1.06453 | CORRECT | yes | 1.06453 |
+| 7 | #1756 | romeerp | 1.06505 | CORRECT | yes | 1.06505 |
+| 8 | #1771 | bigbag | 1.06513 | OBFUSCATED | no | unverified |
+| 9 | #1736 | dexhunter | 1.06549 | CORRECT | yes | 1.06549 |
+| 10 | #1784 | renqianluo | 1.07081 | CORRECT | yes | 1.07081 |
 
-**Verified correct-LUT frontier: PR #1735 (AjAnubolu) at 1.04290 BPB**, with
-PR #1779 the runner-up at 1.06421.
+† "LUT-verified" means the tool statically confirmed a canonical
+`build_sentencepiece_luts`. This is necessary but not sufficient for a
+trustworthy BPB — see "Scope and limitations" above.
 
-The four OBFUSCATED PRs occupy the top three reported slots (#1785, #1758,
-#1738) and one mid-pack slot (#1771). yahya010's own PR #1734 closure
-established that at least one obfuscated submission with a sub-1.05
-reported BPB was actually a buggy-LUT canonical of ~1.18; the same correction
-applied to #1785 (1.01925 → ~1.190), #1758 (1.02840 → ~1.200), and #1738
-(1.03540 → ~1.208) **if** they share the bug. We do not assert they do —
-only that the static tool cannot tell us until they are de-obfuscated.
+**LUT-verified frontier: PR #1735 (AjAnubolu) at reported BPB 1.04290**,
+with PR #1779 the next-best LUT-verified entry at 1.06421. The 0.021 BPB
+gap is large enough that independent reproduction is warranted before
+treating #1735 as the authoritative record.
+
+Four PRs in the top 10 (#1785, #1758, #1738, #1771) returned OBFUSCATED
+and could not be statically audited. We do not claim these are buggy; we
+state the observation neutrally: the three lowest reported BPBs on the
+current top-10 snapshot are all in obfuscated code, and the only sub-1.05
+submission with a self-disclosed LUT classification (yahya010's PR #1734,
+1.0108 → ~1.1873) was buggy. This is a pattern, not a causal claim. A
+naive application of the 1.1671 ratio *if* the bug were present would
+yield #1785 → ~1.190, #1758 → ~1.200, #1738 → ~1.208, and #1771 → ~1.243,
+but this arithmetic is only meaningful if the obfuscated LUTs actually
+match the #1698 lineage, which we have not verified and cannot verify
+without sandbox execution of the wrapped code.
 
 ---
 
@@ -170,9 +224,24 @@ Verbatim from the PR #1734 closure comment by **yahya010**, 2026-04-19:
 > by 17.46% vs canonical sp.decode_ids().encode('utf-8'). Reported
 > val_bpb=1.0108 corresponds to canonical val_bpb≈1.1873..."
 
-This audit replicates yahya010's finding using a static, GPU-free
-inspection method, extends it to the full set of currently-open top PRs,
-and publishes the tool so future submitters can self-verify before filing.
+yahya010's quoted ratio (1.1746) was computed against his own #1734 LUT,
+which has two byte-counting differences from the #1727-style LUT: byte
+tokens are sized by `len("<0xXX>".encode("utf-8"))` (6 bytes) rather than
+1, and `sp.is_unused` tokens are not treated as boundary. Our tool's
+three `--scoring-mode` variants converge to 1.1671 on SP8192 fineweb val
+when applied to the #1727-style LUT shape; running yahya's LUT directly
+against the same val stream gives 1.1770 — within 0.2% of the quoted
+1.1746. Both characterizations describe the same underlying defect
+(leading-space bytes baked into the LUT and re-added at eval); the
+numerical correction to any particular PR depends on which flavour of
+LUT that PR uses. Full analysis in `audit/methodology.md` §4.
+
+This audit extends yahya010's finding by:
+
+1. Publishing a tool anyone can run without reproducing on GPU.
+2. Applying it to the full set of currently-open top-10 PRs.
+3. Documenting the scoring-strategy sensitivity explicitly so the two
+   quoted ratios are no longer a source of confusion.
 
 ---
 
@@ -193,6 +262,9 @@ submissions are eligible for record consideration. Our contribution is:
    *reported* BPB, so reviewers do not have to re-derive that distinction
    per-PR.
 
-The verified frontier (PR #1735 at canonical 1.04290, leading the cluster
-around 1.064-1.071) tells a coherent story about where parameter golf
-actually stands today on the correct-LUT measurement.
+The LUT-verified frontier (PR #1735 at canonical 1.04290, leading the
+cluster around 1.064-1.071) is the cleanest statement we can make from
+static inspection alone. Whether the 0.021 BPB gap between #1735 and the
+next-best LUT-verified entry reflects a genuine capability step-change
+or a reporting artefact is outside the scope of this audit; we flag it as
+"reproduction-pending" rather than "verified record".
