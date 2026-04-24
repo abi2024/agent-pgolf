@@ -1,21 +1,45 @@
 # `canonical_rescore.py` — Parameter Golf BPB byte-count audit tool
 
 A static, GPU-free audit tool for the ``build_sentencepiece_luts`` byte-count
-bug in Parameter Golf submissions descended from the #1698 lineage.
+bug family in Parameter Golf submissions descended from the #1698 lineage.
+It now detects three distinct LUT bug variants (see "Three-variant
+classifier" below).
 
 ## Purpose
 
 For a candidate ``train_gpt.py``:
 
 1. **Classify** the ``build_sentencepiece_luts`` function as
-   CORRECT / BUGGY / OBFUSCATED / UNKNOWN by static regex on the source.
+   CORRECT / BUGGY / OBFUSCATED / UNKNOWN using three property detectors.
+   BUGGY scripts emit a list of named deviations
+   (``leading_space_plus_one``, ``byte_token_wrong_size``,
+   ``missing_is_unused``).
 2. **Compute** the canonical and buggy byte totals on the exact scored-token
    subset the upstream ``eval_val_sliding`` would use (``seq_len=2048``,
    ``stride=64`` by default), using only the tokenizer and val shards.
-3. **Infer** the canonical BPB for a BUGGY script as
-   ``reported_bpb × (buggy_bytes / canonical_bytes)``.
+3. **Infer** the canonical BPB for a BUGGY script with the
+   ``leading_space_plus_one`` deviation as
+   ``reported_bpb × (buggy_bytes / canonical_bytes)``. For BUGGY scripts
+   without that deviation, the +1 ratio arithmetic does not apply;
+   ``inferred_canonical_bpb`` is null and the JSON notes explain that a
+   PR-specific LUT rebuild is needed for an arithmetic correction.
 4. **Check** whether the inferred canonical BPB passes a user-supplied
    merged-SOTA threshold.
+
+## Three-variant classifier (v2)
+
+The classifier verifies three independent canonical properties of
+``build_sentencepiece_luts`` against the PR #1727 reference. Any deviation
+⟹ BUGGY; all three matching ⟹ CORRECT.
+
+| Property | Name in tool | Canonical form |
+|----------|--------------|----------------|
+| P1 | `leading_space_plus_one` | `base_bytes[t] = len(piece.encode("utf-8"))` with no +1 |
+| P2 | `byte_token_wrong_size` | `if sp.is_byte(t): base_bytes[t] = 1` |
+| P3 | `missing_is_unused` | Boundary predicate = `sp.is_control or sp.is_unknown or sp.is_unused` |
+
+See ``audit/methodology.md`` §5 for the detector design (regex / window
+approaches) and the DEVIATES-vs-INDETERMINATE rule.
 
 ## When to use
 
@@ -125,6 +149,35 @@ On SP8192 fineweb val this gives ratio = 1.1671 (same as the default — see
 and why the residual gap to yahya's 1.1746 comes from LUT construction, not
 scoring strategy).
 
+**4. Audit a multi-bug script (triple-bug fixture):**
+
+```bash
+python scripts/canonical_rescore.py \
+    --train-script tests/fixtures/buggy_triple.py \
+    --tokenizer    /workspace/parameter-golf/data/tokenizers/fineweb_8192_bpe.model \
+    --val-data     '/workspace/parameter-golf/data/datasets/fineweb10B_sp8192/fineweb_val_*.bin' \
+    --reported-bpb 1.01080 --pr-number 1734
+```
+
+Expected output (abbreviated):
+
+```json
+{
+  "lut_status": "BUGGY",
+  "lut_bug_detections": [
+    "leading_space_plus_one",
+    "byte_token_wrong_size",
+    "missing_is_unused"
+  ],
+  "inflation_ratio_includes": ["leading_space_plus_one"],
+  "inferred_canonical_bpb": 1.1798...,
+  "notes": "inflation_ratio accounts only for leading_space_plus_one;
+            additional deviations present ... would increase the
+            canonical correction further — the reported
+            inferred_canonical_bpb is therefore conservative ..."
+}
+```
+
 ## Interpreting the JSON output
 
 The tool prints a single JSON object to stdout (and optionally to
@@ -135,6 +188,9 @@ The tool prints a single JSON object to stdout (and optionally to
 | `pr_number` | int or null | Value passed via ``--pr-number``. |
 | `script_path` | str | Absolute path of the inspected script. |
 | `lut_status` | str | ``CORRECT`` / ``BUGGY`` / ``OBFUSCATED`` / ``UNKNOWN``. |
+| `lut_bug_detections` | list[str] | Deviation names (subset of ``leading_space_plus_one``, ``byte_token_wrong_size``, ``missing_is_unused``). Empty for CORRECT. |
+| `detected_bugs_description` | str | Human-readable summary of the detected deviations. Empty for CORRECT. |
+| `inflation_ratio_includes` | list[str] | Which deviation's arithmetic the `inflation_ratio` accounts for (currently only ``leading_space_plus_one`` when applicable). Empty otherwise. |
 | `reported_bpb` | float or null | Echoed from ``--reported-bpb``. |
 | `inflation_ratio` | float or null | ``1.0`` for CORRECT, ``buggy/canonical`` for BUGGY, ``null`` for OBFUSCATED / UNKNOWN. |
 | `computed_inflation_ratio` | float or null | The raw ``buggy/canonical`` computed from val data, regardless of LUT classification. Use this if you want the number divorced from the applied-ratio logic. |
@@ -154,9 +210,18 @@ The tool prints a single JSON object to stdout (and optionally to
 * ``lut_status == "CORRECT"`` ⟹ the reported BPB is **LUT-verified**. This
   is necessary but not sufficient for a trustworthy submission; other
   measurement paths still need human review.
-* ``lut_status == "BUGGY"`` ⟹ the PR inherits the #1698 +1 bug. The
-  canonical BPB is ``inferred_canonical_bpb`` (assuming the cross-entropy
-  numerator was correctly measured).
+* ``lut_status == "BUGGY"`` ⟹ the PR's LUT deviates from canonical on at
+  least one of the three checked properties. Inspect
+  ``lut_bug_detections`` for the specific deviations. If the list
+  includes ``leading_space_plus_one``, the canonical BPB is
+  ``inferred_canonical_bpb`` (assuming the cross-entropy numerator was
+  correctly measured). If the list contains other deviations but not
+  ``leading_space_plus_one``, ``inferred_canonical_bpb`` is ``null`` —
+  the +1 arithmetic doesn't apply and a PR-specific LUT rebuild is
+  required for an arithmetic correction. If the list contains
+  ``leading_space_plus_one`` *plus* other deviations, the reported
+  ``inferred_canonical_bpb`` is conservative (underestimates the true
+  canonical BPB); see ``inflation_ratio_includes`` and ``notes``.
 * ``lut_status == "OBFUSCATED"`` ⟹ the LUT cannot be verified statically.
   This is **not** a claim that the PR is buggy — only that the tool cannot
   tell. Manual sandbox execution of the decoded blob would be required.
@@ -194,11 +259,17 @@ The tool prints a single JSON object to stdout (and optionally to
 
 ## Tests
 
-See ``tests/test_canonical_rescore.py`` for 14 tests covering:
+See ``tests/test_canonical_rescore.py`` for 20 tests covering:
 
 * LUT classification (CORRECT, BUGGY, OBFUSCATED inline-exec, OBFUSCATED
   runpy, UNKNOWN, whitespace-tolerant BUGGY detection, false-positive
   rejection for lzma imports alone).
+* Three-variant deviation detection: per-bug single-deviation fixtures
+  (``tests/fixtures/buggy_byte_token.py``,
+  ``tests/fixtures/buggy_missing_is_unused.py``) and the triple-bug
+  fixture (``tests/fixtures/buggy_triple.py``).
+* Regressions confirming PR #1727 remains CORRECT and the original +1
+  fixture still flags exactly ``["leading_space_plus_one"]``.
 * Byte-counting math on synthetic data with hand-verified expected values.
 * Inflation ratio on real fineweb val subset.
 * Each of the three ``--scoring-mode`` variants independently.

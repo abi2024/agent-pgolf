@@ -3,7 +3,9 @@
 This is the per-PR write-up backing `audit/corrected_leaderboard.md`. For
 each PR we record what the static tool found, what the inferred canonical
 BPB is (or why we could not compute one), and any inspection notes. The
-tool's raw JSON for each PR is in `audit/per_pr/<pr>.json`.
+tool's raw JSON for each PR is in `audit/per_pr/<pr>.json` (v1
+single-bug detector) and `audit/per_pr_v2/<pr>.json` (v2 three-variant
+detector — both agree on every row; see `audit/changelog_v2.md`).
 
 ## Inputs
 
@@ -25,6 +27,9 @@ tool's raw JSON for each PR is in `audit/per_pr/<pr>.json`.
 * **Scope caveat**: "LUT-verified CORRECT" means the LUT is canonical, not
   that the reported BPB is reproducible end-to-end. See
   `audit/writeup.md` "Scope and limitations".
+* **Classifier version**: this table reflects both the v1 (single-bug)
+  and v2 (three-bug) classifier outputs; they agree on every row. See
+  `audit/changelog_v2.md` for the side-by-side diff.
 
 ## LUT-verified Top 5
 

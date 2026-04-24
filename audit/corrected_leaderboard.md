@@ -24,6 +24,10 @@ val_bpb=1.07431, within tolerance of the reported 3-seed mean of
 `eval_val_sliding` itself is canonical, or that no other measurement
 irregularity exists. See `audit/writeup.md` "Scope and limitations".
 
+**Classifier version.** This table reflects both the v1 (single-bug)
+and v2 (three-bug) classifier outputs — they agree on every row. See
+`audit/changelog_v2.md` for the side-by-side diff.
+
 ## Full audited table
 
 Sorted by reported BPB (best first). "Inferred canonical BPB" is the buggy

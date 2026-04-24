@@ -202,7 +202,96 @@ additionally idiosyncratic.
 
 ---
 
-## 5. Scope and what this audit does **not** claim
+## 5. Three-variant LUT classifier (v2)
+
+The classifier in `scripts/canonical_rescore.py` was extended from a
+single-bug detector (the +1 bake, §2 above) to a three-variant detector
+that also checks the byte-token branch and the boundary predicate. All
+three properties must match canonical for a PR to classify as `CORRECT`.
+
+### Canonical properties
+
+| # | Name in tool | Canonical form | Deviation |
+|---|--------------|----------------|-----------|
+| P1 | `leading_space_plus_one` | `base_bytes[t] = len(piece.encode("utf-8"))` with no +1 after stripping the `▁` | `... + 1` baked into the LUT (the #1698 bug, §2) |
+| P2 | `byte_token_wrong_size` | `if sp.is_byte(t): base_bytes[t] = 1` (literal 1) | `sp.is_byte` branch assigns something other than 1, e.g. `len(piece.encode("utf-8"))` (= 6 for `"<0xXX>"`) |
+| P3 | `missing_is_unused` | Boundary predicate is `sp.is_control(t) or sp.is_unknown(t) or sp.is_unused(t)` | Predicate has `is_control` + `is_unknown` but not `is_unused` |
+
+### Detector approach (regex / window)
+
+* **P1** uses two regexes over the full source: `_LEADING_PLUS1_RE`
+  matches `base_bytes[...] = len(<expr>.encode("utf-8")) + 1` (captures
+  both `piece.encode(...)` and `piece[1:].encode(...)` forms);
+  `_LEADING_NOPLUS_RE` matches the same assignment without the trailing
+  `+ 1`. One matches ⟹ status; neither matches ⟹ `INDETERMINATE`.
+* **P2** locates `if sp.is_byte(<id>):` lines then scans the next 1-6
+  indented lines for a `base_bytes[...] = <rhs>` assignment. `rhs == "1"`
+  ⟹ `MATCHES_CANONICAL`; any other RHS ⟹ `DEVIATES`; no branch located ⟹
+  `INDETERMINATE`.
+* **P3** scans every `is_control(` call site, grabs a ±120-char window,
+  and checks whether `is_unknown(` and `is_unused(` (both required to
+  include the opening paren so comment text does not trigger false
+  positives) appear within the window. Both present ⟹
+  `MATCHES_CANONICAL`; only `is_unknown(` present ⟹ `DEVIATES`; no
+  `is_control(` call at all ⟹ `INDETERMINATE`.
+
+### Classification rules
+
+* Any property DEVIATES ⟹ `BUGGY`. The JSON field `lut_bug_detections`
+  lists the deviating property names.
+* All three properties MATCH ⟹ `CORRECT`.
+* No deviations, not all three matching, obfuscation regex matches ⟹
+  `OBFUSCATED`.
+* Otherwise ⟹ `UNKNOWN`.
+
+### Design note: DEVIATES vs INDETERMINATE
+
+The P2 and P3 detectors return `DEVIATES` only when the relevant
+construct is *present but wrong*. Absence of the construct — e.g. a
+function that handles byte tokens via the default path without an
+explicit `sp.is_byte` check — yields `INDETERMINATE`, not `DEVIATES`. This
+is deliberate: a no-`sp.is_byte`-branch function IS functionally buggy
+for byte tokens (scoring them as UTF-8 length of `"<0xXX>"` rather than
+1), but a static detector that inferred "buggy" from "absent" would
+false-positive on any pedagogical LUT fragment that happens to elide
+rare cases. The conservative rule produces a classifier that can miss a
+bug variant it does not explicitly see, but will not false-accuse a
+simpler script.
+
+**Consequence for yahya010's PR #1734 `train_gdn_7k.py`.** His function
+has no `sp.is_byte` branch (byte tokens go through the default path and
+are sized at 6 rather than 1), and his boundary predicate lacks
+`sp.is_unused`. The v2 classifier reports:
+
+```
+lut_status: BUGGY
+lut_bug_detections: ['leading_space_plus_one', 'missing_is_unused']
+```
+
+The byte-token bug is implicit (falls through the default path) rather
+than explicit, so the P2 detector returns `INDETERMINATE` rather than
+`DEVIATES` — matching the design rule above. The classification is still
+correct (BUGGY), with two of the three deviations explicitly named.
+yahya010's own 1.1746 ratio combines all three bug effects against his
+own decoded-stream ground truth; the tool's default 1.1671 ratio
+characterizes only the +1 component. See §4 for the detailed numerical
+comparison.
+
+### Conservative arithmetic
+
+The `inflation_ratio` field in the tool's JSON output is computed by the
+val-data math in §3 — that math accounts only for the
+`leading_space_plus_one` effect. For BUGGY PRs with additional
+deviations the `inflation_ratio_includes` JSON field explicitly lists
+which bugs the arithmetic covers (currently only
+`["leading_space_plus_one"]`). An arithmetic correction for
+`byte_token_wrong_size` or `missing_is_unused` would require rebuilding
+the PR's specific LUT against the val stream — still a no-GPU static
+operation, but not a simple ratio multiplication.
+
+---
+
+## 6. Scope and what this audit does **not** claim
 
 * **Cross-entropy is treated as given.** We do not re-run any model. The
   arithmetic correction `canonical_bpb = reported_bpb × inflation_ratio`
@@ -228,7 +317,7 @@ additionally idiosyncratic.
 
 ---
 
-## 6. Why the static-only design is correct here
+## 7. Why the static-only design is correct here
 
 The byte-count denominator of BPB depends only on the tokenizer and the
 val-token sequence. It does *not* depend on the model checkpoint, the
@@ -244,7 +333,7 @@ inspection.
 
 ---
 
-## 7. Tool reference
+## 8. Tool reference
 
 ```bash
 python scripts/canonical_rescore.py \
@@ -263,15 +352,20 @@ JSON output schema:
 | Field | Meaning |
 |---|---|
 | `lut_status` | `CORRECT` / `BUGGY` / `OBFUSCATED` / `UNKNOWN` |
-| `inflation_ratio` | `1.0` for CORRECT, computed for BUGGY, `null` otherwise |
-| `computed_inflation_ratio` | always the raw `buggy/canonical` from the val data |
-| `inferred_canonical_bpb` | `reported_bpb × inflation_ratio` if both known |
+| `lut_bug_detections` | list of deviation names — subset of `leading_space_plus_one`, `byte_token_wrong_size`, `missing_is_unused` (empty for CORRECT) |
+| `detected_bugs_description` | human-readable summary of the named deviations |
+| `inflation_ratio_includes` | which bugs the arithmetic ratio accounts for (currently just `["leading_space_plus_one"]` when applicable) |
+| `inflation_ratio` | `1.0` for CORRECT, computed for BUGGY with the +1 bug, `null` otherwise |
+| `computed_inflation_ratio` | always the raw `buggy/canonical` from the val data (for the +1 effect) |
+| `inferred_canonical_bpb` | `reported_bpb × inflation_ratio` if both known; null if the +1 arithmetic doesn't apply (e.g. a non-P1 BUGGY PR) |
 | `passes_merged_sota_threshold` | inferred_canonical_bpb ≤ threshold |
 | `canonical_byte_count`, `buggy_byte_count` | totals on the scored y-subset |
 | `leading_space_token_count`, `scored_token_count`, `num_windows` | sanity counters |
-| `notes` | human-readable caveats (e.g. "OBFUSCATED — cannot verify statically") |
+| `notes` | human-readable caveats (e.g. "OBFUSCATED — cannot verify statically" or multi-bug conservative-ratio warning) |
 
-Tests in `tests/test_canonical_rescore.py` exercise CORRECT, BUGGY,
-OBFUSCATED (both `exec(...)` and runpy patterns), UNKNOWN, the synthetic
-byte-counting math, and the end-to-end rescore against PR #1727 and the
-buggy fixture.
+Tests in `tests/test_canonical_rescore.py` (20 tests) exercise CORRECT,
+BUGGY, OBFUSCATED (both `exec(...)` and runpy patterns), UNKNOWN, the
+synthetic byte-counting math, the three scoring-mode variants, the
+three-variant deviation detectors (single-bug and triple-bug fixtures
+under `tests/fixtures/buggy_*.py`), and the end-to-end rescore against
+PR #1727 and the buggy fixture.

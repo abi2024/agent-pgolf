@@ -31,6 +31,15 @@
   the exact inflation ratio over the actual scored-token subset, and the
   inferred canonical BPB. The tool supports three `--scoring-mode`
   variants so reviewers can reproduce both the 1.1671 and 1.1746 numbers.
+* The classifier is a **three-variant** detector: beyond the +1
+  leading-space bake (`leading_space_plus_one`) it also checks
+  `byte_token_wrong_size` (sp.is_byte branch sizing byte tokens by UTF-8
+  length of the literal `"<0xXX>"` string) and `missing_is_unused`
+  (boundary predicate omits `sp.is_unused`). yahya010's PR #1734
+  `train_gdn_7k.py` is the case where multiple variants co-occur. The
+  extended classifier applied to the current top-10 PRs produces the
+  same classification as the single-bug detector (6 CORRECT, 4
+  OBFUSCATED) — see `audit/changelog_v2.md`.
 * Applying the tool to the **top 10 open PRs by reported BPB** as of
   2026-04-23: 6 are CORRECT (canonical LUT verified), 4 are OBFUSCATED
   (`lzma.decompress(base64.b85decode(...))` — LUT cannot be verified
@@ -170,10 +179,11 @@ For a CORRECT script the output looks like:
 For a BUGGY script the output reports the exact byte counts, the inflation
 ratio, and the corrected BPB.
 
-Tests covering CORRECT (PR #1727), BUGGY (synthetic fixture), OBFUSCATED
-(both inline-`exec` and `runpy`-style wrappers), UNKNOWN, and the full
-end-to-end rescore are in `tests/test_canonical_rescore.py` (10 tests, all
-green).
+Tests covering CORRECT (PR #1727), BUGGY (four synthetic fixtures — one
+per bug variant plus the triple-bug case), OBFUSCATED (both inline-`exec`
+and `runpy`-style wrappers), UNKNOWN, the three scoring-mode variants,
+and the full end-to-end rescore are in `tests/test_canonical_rescore.py`
+(20 tests, all green).
 
 ---
 
@@ -193,8 +203,13 @@ green).
 | 10 | #1784 | renqianluo | 1.07081 | CORRECT | yes | 1.07081 |
 
 † "LUT-verified" means the tool statically confirmed a canonical
-`build_sentencepiece_luts`. This is necessary but not sufficient for a
-trustworthy BPB — see "Scope and limitations" above.
+`build_sentencepiece_luts`. Under the v2 (three-variant) classifier
+this requires all three canonical properties — `leading_space_noplus`,
+`byte_token_one`, and `boundary_predicate_full` — to match. This is
+necessary but not sufficient for a trustworthy BPB — see "Scope and
+limitations" above. The v2 classifier reproduces the same
+classification as v1 on every row of this table; see
+`audit/changelog_v2.md` for the side-by-side.
 
 **LUT-verified frontier: PR #1735 (AjAnubolu) at reported BPB 1.04290**,
 with PR #1779 the next-best LUT-verified entry at 1.06421. The 0.021 BPB
@@ -234,7 +249,8 @@ against the same val stream gives 1.1770 — within 0.2% of the quoted
 1.1746. Both characterizations describe the same underlying defect
 (leading-space bytes baked into the LUT and re-added at eval); the
 numerical correction to any particular PR depends on which flavour of
-LUT that PR uses. Full analysis in `audit/methodology.md` §4.
+LUT that PR uses. Full analysis in `audit/methodology.md` §4, and the
+per-property detection design in §5.
 
 This audit extends yahya010's finding by:
 
@@ -242,6 +258,11 @@ This audit extends yahya010's finding by:
 2. Applying it to the full set of currently-open top-10 PRs.
 3. Documenting the scoring-strategy sensitivity explicitly so the two
    quoted ratios are no longer a source of confusion.
+4. Detecting the two *additional* LUT-construction bugs in yahya's
+   own train_gdn_7k.py (byte-token sizing, missing `is_unused` in the
+   boundary predicate) as explicitly-named deviations in the tool's
+   JSON output, so future submissions can be checked for each variant
+   individually.
 
 ---
 
