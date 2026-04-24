@@ -70,11 +70,20 @@ _OBFUSCATED_RE = re.compile(
 )
 
 # --- Property 1: leading-space base_bytes assignment ("+1 or not") ---------
+# The canonical upstream form is
+#   base_bytes_np[token_id] = len(piece.encode("utf-8"))
+# after stripping the leading ▁. The #1698 buggy form bakes a +1 into the LUT:
+#   base_bytes_np[token_id] = len(piece.encode("utf-8")) + 1
+# yahya010's PR #1734 train_gdn_7k.py uses a slice-based variant:
+#   base_bytes[i] = len(piece[1:].encode("utf-8")) + 1
+# so we accept any ``len(<expr>.encode("utf-8"))`` where <expr> is a simple
+# identifier or subscript (no nested parens). ``[^()\n]*`` enforces this.
+_LEN_ENCODE_UTF8 = r"len\(\s*[^()\n]*\.encode\s*\(\s*['\"]utf-8['\"]\s*\)\s*\)"
 _LEADING_PLUS1_RE = re.compile(
-    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)\s*\+\s*1"
+    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*" + _LEN_ENCODE_UTF8 + r"\s*\+\s*1"
 )
 _LEADING_NOPLUS_RE = re.compile(
-    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*len\(\s*piece\s*\.\s*encode\(\s*['\"]utf-8['\"]\s*\)\s*\)(?!\s*\+\s*1)"
+    r"base_bytes[\w]*\s*\[[^\]]+\]\s*=\s*" + _LEN_ENCODE_UTF8 + r"(?!\s*\+\s*1)"
 )
 
 # --- Property 2: sp.is_byte branch assigns literal 1 -----------------------
