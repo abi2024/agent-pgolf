@@ -43,8 +43,9 @@
 * Applying the tool to the **top 10 open PRs by reported BPB** as of
   2026-04-23: 6 are CORRECT (canonical LUT verified), 4 are OBFUSCATED
   (`lzma.decompress(base64.b85decode(...))` — LUT cannot be verified
-  statically). The LUT-verified correct-LUT frontier is **PR #1735**
-  (AjAnubolu, 1.04290), followed by the cluster of 1.064-1.071 PRs
+  statically). The LUT-verified correct-LUT frontier as of 2026-04-24 is
+  **PR #1795** (OE-GOD, 1.01252), which supersedes the closed #1785; PR #1735
+  (AjAnubolu, 1.04290) is also LUT-verified, followed by the cluster of 1.064-1.071 PRs
   anchored by the reproducible PR #1727 stack.
 
 This is a **tooling and methodology contribution**, not a disqualification
@@ -129,7 +130,7 @@ What the OBFUSCATED verdict does and does not mean:
   verifying the LUT inside the wrapper requires sandbox execution, which
   is out of scope for this audit.
 
-PR #1735's **0.021 BPB lead** over the next-best CORRECT result (#1779 at
+PR #1795's reported 1.01252 leads the LUT-verified frontier with a -0.030 BPB margin over PR #1735, but the gain comes from a byte-level PPM mixture on top of a canonical NN base, not from a different LUT or eval shape. PR #1795's NN-only mean (1.09764) tracks @clarkkev's 2026-04-01 record (1.09785) within seed noise, so the audit verifies the byte-count denominator only; the mixture's gate legality was verified separately by @nprime06's review on PR #1795 itself. PR #1735's **0.021 BPB lead** over the next-best CORRECT result (#1779 at
 1.06421) is sufficiently large that independent reproduction is warranted
 before treating it as authoritative for record-class comparisons. The tool
 verifies only the LUT, not the full training pipeline; a wide gap like
@@ -191,7 +192,8 @@ and the full end-to-end rescore are in `tests/test_canonical_rescore.py`
 
 | Rank | PR | Author | Reported | LUT status | LUT-verified† | Canonical BPB |
 |------|----|--------|---------|-----|:---:|-----------|
-| 1 | #1785 | OE-GOD | 1.01925 | OBFUSCATED | no | unverified |
+| 1 | #1795 | OE-GOD | 1.01252 | CORRECT | yes | **1.01252** | (added 2026-04-24, supersedes #1785) |
+| — | #1785 | OE-GOD | 1.01925 | OBFUSCATED | no | superseded by #1795 |
 | 2 | #1758 | kilojoules | 1.02840 | OBFUSCATED | no | unverified |
 | 3 | #1738 | alertcat | 1.03540 | OBFUSCATED | no | unverified |
 | 4 | #1735 | AjAnubolu | 1.04290 | CORRECT | yes | **1.04290** |
@@ -211,7 +213,7 @@ limitations" above. The v2 classifier reproduces the same
 classification as v1 on every row of this table; see
 `audit/changelog_v2.md` for the side-by-side.
 
-**LUT-verified frontier: PR #1735 (AjAnubolu) at reported BPB 1.04290**,
+**LUT-verified frontier: PR #1795 (OE-GOD) at reported BPB 1.01252** as of 2026-04-24 (audit run on commit `cb5ad95`); previous frontier PR #1735 (AjAnubolu) at 1.04290 remains LUT-verified,
 with PR #1779 the next-best LUT-verified entry at 1.06421. The 0.021 BPB
 gap is large enough that independent reproduction is warranted before
 treating #1735 as the authoritative record.
@@ -288,7 +290,7 @@ submissions are eligible for record consideration. Our contribution is:
    *reported* BPB, so reviewers do not have to re-derive that distinction
    per-PR.
 
-The LUT-verified frontier (PR #1735 at canonical 1.04290, leading the
+The LUT-verified frontier (PR #1795 at canonical 1.01252 as of 2026-04-24; previously PR #1735 at 1.04290, both leading the
 cluster around 1.064-1.071) is the cleanest statement we can make from
 static inspection alone. Whether the 0.021 BPB gap between #1735 and the
 next-best LUT-verified entry reflects a genuine capability step-change

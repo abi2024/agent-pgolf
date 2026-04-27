@@ -82,3 +82,27 @@ No action needed against any top-10 PR as a result of the v2 audit. The
 extended classifier is now available for future audits (obfuscated-PR
 de-obfuscation, new submissions) and is documented in
 `audit/methodology.md` §5 and `scripts/README_canonical_rescore.md`.
+
+
+## v2.1 — 2026-04-24 — PR #1795 added, #1785 superseded
+
+In response to @OE-GOD's reply on PR #1804 (the audit's PR), I re-fetched and
+audited PR #1795 (the open successor of the closed #1785).
+
+| PR | author | reported BPB | classification | bugs detected |
+|---|---|---|---|---|
+| #1795 (commit `cb5ad95`) | OE-GOD | 1.01252 | CORRECT | [] |
+| #1785 (closed) | OE-GOD | 1.01925 | OBFUSCATED → superseded | n/a |
+
+The static check passes all three properties on PR #1795. Tool output preserved
+at `audit/per_pr_v2/1795.json`. Verdict: PR #1795 LUT is canonical. The
+inflation-ratio correction does not apply to PR #1795. Frontier of the
+LUT-verified correct-LUT entries moves from PR #1735 (1.04290) to PR #1795
+(1.01252).
+
+**Scope reminder.** This audit verifies LUT correctness only. PR #1795's
+reported 1.01252 includes a byte-level PPM mixture on top of canonical NN
+bytes; the mixture's gate legality (an outcome-independent adaptive-λ check)
+was verified separately by @nprime06's review on PR #1795 itself (a target-
+conditioned gate from an earlier commit was flagged and fixed). The audit
+tool does not check gate legality.

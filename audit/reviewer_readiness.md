@@ -66,7 +66,7 @@ OBFUSCATED, 0 BUGGY split), which strengthens the top-10 assessment.
 
 ## What still requires deeper investigation
 
-1. **Independent reproduction of PR #1735.** Its 0.021 BPB lead over the
+1. **Frontier is now PR #1795 (1.01252) since 2026-04-24, supersedes the closed #1785.** Independent reproduction of either PR #1795 or PR #1735 (the previous frontier at 1.04290) would strengthen the audit but is out of scope for the static analysis. Note also that PR #1795's mixture BPB is built on top of a canonical NN base measured at 1.09764 (matches @clarkkev's #1334 record within seed noise), so a reproduction would only need to verify the −0.07435 BPB mixture delta, not the entire pipeline. **Independent reproduction of PR #1735.** Its 0.021 BPB lead over the
    next-best LUT-verified entry is large enough to warrant a multi-seed
    reproduction before treating it as the authoritative record. The tool
    verifies the LUT only, not the full training pipeline. Flagged as

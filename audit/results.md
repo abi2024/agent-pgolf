@@ -40,7 +40,8 @@ cross-entropy numerator being canonically measured.
 
 | Rank | PR | Author | Canonical BPB | Notes |
 |------|----|--------|---------------|-------|
-| 1 | #1735 | AjAnubolu | **1.04290** | "SP8192 + Parallel Pre-Quant TTT" — LUT-verified frontier; 0.021 BPB lead over next-best warrants independent reproduction |
+| 1 | #1795 | OE-GOD | **1.01252** | "SP4096 + Byte-Level PPM Adaptive-λ Mixture" — LUT-verified frontier (post-2026-04-23 update); supersedes #1785 (closed). Reported NN-only 1.09764 ± 0.00044 (3-seed) matches @clarkkev's 2026-04-01 record (1.09785) within seed noise; -0.07435 BPB delta from byte-level PPM mixture with strict-legal outcome-independent gate (gate legality verified by @nprime06's review on PR #1795 itself, not by this audit). |
+| 2 | #1735 | AjAnubolu | **1.04290** | "SP8192 + Parallel Pre-Quant TTT" — previously the LUT-verified frontier; remains LUT-verified |
 | 2 | #1779 | leon2k2k2k | 1.06421 | "SP8192 + CaseOps + GatedAttn + QuantGate + Loop4-5 + PhasedTTT + RecurAlpha" |
 | 3 | #1769 | dexhunter | 1.06453 | Same family, MLPClip12 variant (5-seed mean) |
 | 4 | #1756 | romeerp | 1.06505 | "CaseOps + Recurrence Depth Curriculum" |
@@ -62,6 +63,22 @@ LUT-verified but rank below the top 5 by reported BPB.
   self-disclosed 1.1873 for PR #1734, but the similarity is observation,
   not evidence — we have no static or dynamic verification either way.
 
+
+### #1795 — OE-GOD — reported 1.01252 — CORRECT (added 2026-04-24)
+
+* Open PR (commit `cb5ad95`) submitted 2026-04-24, supersedes the closed #1785.
+* `train_gpt.py` ships as readable source (no lzma wrapper). Tool returns `lut_status: CORRECT` with `lut_bug_detections: []` on all three checked properties:
+  - `leading_space_noplus`: ✓ (no `+1` baked into LUT)
+  - `byte_token_one`: ✓ (`base_bytes_np[token_id] = 1` for `sp.is_byte` tokens)
+  - `boundary_predicate_full`: ✓ (predicate includes `sp.is_unused`)
+* `build_sentencepiece_luts` is verbatim from @clarkkev's PR #1334.
+* Reported breakdown:
+  - NN-only sliding BPB mean (3-seed): 1.09764 ± 0.00044, matching @clarkkev's 2026-04-01 record (1.09785) within seed noise.
+  - Mixture BPB (NN + byte-level PPM-D order-4 with adaptive-λ outcome-independent gate): 1.01252 (3-seed mean).
+  - −0.07435 BPB delta computed on top of canonical NN byte count.
+* **Audit scope caveat:** This audit verifies LUT correctness only. It does NOT verify gate legality of the byte-level PPM mixture. Gate legality was independently reviewed by @nprime06 on PR #1795 itself (target-conditioned gate flagged in earlier commit, fixed in `cb5ad95` to a strict-legal outcome-independent form). The 1.01252 number reflects the post-fix submission.
+* PR #1804 reply thread on 2026-04-24 invited this re-audit; tool result preserved at `audit/per_pr_v2/1795.json`.
+
 ### #1758 — kilojoules — reported 1.02840 — OBFUSCATED
 * Script dir: `records/track_10min_16mb/2026-04-20_SP8192_PreQuantTTT_Unfrozen_LR1e3/`
 * Same `lzma.decompress(b85decode(...))` pattern as #1785.
@@ -82,7 +99,7 @@ LUT-verified but rank below the top 5 by reported BPB.
 ### #1735 — AjAnubolu — reported 1.04290 — CORRECT
 * Script dir: `records/track_10min_16mb/2026-04-18_SP8192_ParallelPreQuantTTT/`
 * `build_sentencepiece_luts` is the canonical version (no `+1`).
-* This is the **LUT-verified frontier** at canonical BPB 1.04290.
+* Was the LUT-verified frontier at the time of the 2026-04-23 snapshot. Superseded as frontier by PR #1795 (OE-GOD, 1.01252) following PR #1795's verified-CORRECT update on 2026-04-24.
 * Threshold check: 1.04290 ≤ 1.0738 — would clear the merged-SOTA
   reference by 0.031 if held against the same 1.0738 threshold yahya's
   closure note implied.

@@ -37,7 +37,7 @@ scripts the LUT cannot be verified without executing the encoded blob.
 
 | Rank | PR | Author | Reported BPB | LUT Status | LUT-verified | Inferred Canonical BPB | Passes ≤1.0738? |
 |------|----|--------|-------------|-----------|:---:|------------------------|-----------------|
-| 1 | #1785 | OE-GOD | 1.01925 | OBFUSCATED | no | unverified | ? |
+| 1 | #1785 | OE-GOD | 1.01925 | OBFUSCATED | no | unverified — closed/superseded by #1795 | n/a |
 | 2 | #1758 | kilojoules | 1.02840 | OBFUSCATED | no | unverified | ? |
 | 3 | #1738 | alertcat | 1.03540 | OBFUSCATED | no | unverified | ? |
 | 4 | #1735 | AjAnubolu | 1.04290 | CORRECT | yes | 1.04290 | Yes |
@@ -59,13 +59,14 @@ audited, the LUT-verified frontier is:
 
 | Rank | PR | Author | Canonical BPB |
 |------|----|--------|---------------|
-| 1 | #1735 | AjAnubolu | **1.04290** |
+| 1 | #1795 | OE-GOD | **1.01252** |
+| 2 | #1735 | AjAnubolu | **1.04290** |
 | 2 | #1779 | leon2k2k2k | 1.06421 |
 | 3 | #1769 | dexhunter | 1.06453 |
 | 4 | #1756 | romeerp | 1.06505 |
 | 5 | #1736 | dexhunter | 1.06549 |
 
-PR #1735 (AjAnubolu, "SP8192 + Parallel Pre-Quant TTT") leads the
+PR #1795 (OE-GOD, "SP4096 + Byte-Level PPM Adaptive-λ Mixture") leads the LUT-verified frontier as of 2026-04-24, with reported BPB 1.01252 (3-seed mean, full val). PR #1735 (AjAnubolu, "SP8192 + Parallel Pre-Quant TTT") was the previous frontier and remains LUT-verified at 1.04290. The
 LUT-verified line by ~0.022 BPB over the next-best PR (#1779). This gap is
 large enough that independent reproduction is warranted before treating
 #1735 as the authoritative record — the tool verifies the LUT, not the
