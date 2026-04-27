@@ -76,10 +76,18 @@ OBFUSCATED, 0 BUGGY split), which strengthens the top-10 assessment.
    `lzma.decompress(base64.b85decode(...))` blobs in a sandbox, which is
    out of scope for this audit. We state this neutrally; we do not
    accuse any obfuscated PR of being buggy.
-3. **The residual 0.2% gap between our 1.1770 (yahya's LUT on our val)
-   and yahya's quoted 1.1746.** Likely a val-shard or rounding
-   difference, but we have not pinned it down. Does not affect any audit
-   conclusion — both numbers describe the same bug.
+3. **The 0.77% gap between our reproduction (1.1655) of yahya's exact
+   LUT on our val and yahya's quoted 1.1746.** A previous draft of this
+   audit claimed 1.1770; that number was based on an incomplete
+   reconstruction and has been retracted (see
+   `audit/empirical_validation/run3_summary.md`). The corrected actual
+   reproduction is 1.1655, in the opposite direction from his quote.
+   The gap cannot be closed without yahya's exact eval pipeline.
+   Does not affect the audit's headline numbers (canonical 1.1671,
+   top-10 classifications): all three of yahya's LUT deviations are
+   independently detected by the static classifier, and his self-disclosed
+   bug is what motivates this audit; the unresolved gap is a property
+   of how his number was reported, not of the audit's analysis.
 4. **Broader cross-entropy correctness.** The audit assumes the
    cross-entropy numerator of BPB is correctly measured by each
    submitter. A PR that modified `eval_val_sliding` in other ways (e.g.
