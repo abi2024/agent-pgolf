@@ -79,18 +79,18 @@ OBFUSCATED, 0 BUGGY split), which strengthens the top-10 assessment.
 3. **The 0.77% gap between our reproduction (1.1655) of yahya's exact
    LUT on our val and yahya's quoted 1.1746.** A previous draft of this
    audit claimed 1.1770 (see `audit/empirical_validation/run3_summary.md`);
-   that has been retracted in favor of the corrected 1.1655. Run 4 has
-   since narrowed the gap further: it is invariant to eval pipeline
-   windowing (seq_len ∈ {1024, 2048}, stride ∈ {64, 1024}), so the gap
-   does not live in scoring strategy. By elimination, it lives in
-   tokenizer or val-shard state the audit cannot access (most likely
-   the SP1024 tokenizer yahya's code defaults to but his audited
-   submission overrides to SP8192). Does not affect the audit's
-   headline numbers (canonical 1.1671, top-10 classifications): all
-   three of yahya's LUT deviations are independently detected by the
-   static classifier, and his self-disclosed bug is what motivates
-   this audit; the unresolved gap is a property of how his disclosure
-   number was computed, not of the audit's analysis.
+   that has been retracted in favor of the corrected 1.1655. Runs 4 and 5
+   have since bounded the gap. Run 4: ratio is invariant to eval pipeline
+   windowing parameters. Run 5: of yahya's three LUT bugs, only Bug B
+   (byte_token_wrong_size) produces a measurable ratio shift on SP8192,
+   and that shift is *downward* (canonical 1.1671 → yahya 1.1655). No
+   combination of his bugs can produce a ratio above canonical on this
+   val. The gap to 1.1746 therefore cannot live in his LUT structure on
+   this val; it lives in tokenizer/val state the audit cannot access
+   (most likely the SP1024 tokenizer his code defaults to). Does not
+   affect the audit's headline numbers (canonical 1.1671, top-10
+   classifications): the structural classifier verdicts are independent
+   of empirical inflation magnitudes.
 4. **Broader cross-entropy correctness.** The audit assumes the
    cross-entropy numerator of BPB is correctly measured by each
    submitter. A PR that modified `eval_val_sliding` in other ways (e.g.
