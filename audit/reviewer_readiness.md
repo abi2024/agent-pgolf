@@ -78,16 +78,19 @@ OBFUSCATED, 0 BUGGY split), which strengthens the top-10 assessment.
    accuse any obfuscated PR of being buggy.
 3. **The 0.77% gap between our reproduction (1.1655) of yahya's exact
    LUT on our val and yahya's quoted 1.1746.** A previous draft of this
-   audit claimed 1.1770; that number was based on an incomplete
-   reconstruction and has been retracted (see
-   `audit/empirical_validation/run3_summary.md`). The corrected actual
-   reproduction is 1.1655, in the opposite direction from his quote.
-   The gap cannot be closed without yahya's exact eval pipeline.
-   Does not affect the audit's headline numbers (canonical 1.1671,
-   top-10 classifications): all three of yahya's LUT deviations are
-   independently detected by the static classifier, and his self-disclosed
-   bug is what motivates this audit; the unresolved gap is a property
-   of how his number was reported, not of the audit's analysis.
+   audit claimed 1.1770 (see `audit/empirical_validation/run3_summary.md`);
+   that has been retracted in favor of the corrected 1.1655. Run 4 has
+   since narrowed the gap further: it is invariant to eval pipeline
+   windowing (seq_len ∈ {1024, 2048}, stride ∈ {64, 1024}), so the gap
+   does not live in scoring strategy. By elimination, it lives in
+   tokenizer or val-shard state the audit cannot access (most likely
+   the SP1024 tokenizer yahya's code defaults to but his audited
+   submission overrides to SP8192). Does not affect the audit's
+   headline numbers (canonical 1.1671, top-10 classifications): all
+   three of yahya's LUT deviations are independently detected by the
+   static classifier, and his self-disclosed bug is what motivates
+   this audit; the unresolved gap is a property of how his disclosure
+   number was computed, not of the audit's analysis.
 4. **Broader cross-entropy correctness.** The audit assumes the
    cross-entropy numerator of BPB is correctly measured by each
    submitter. A PR that modified `eval_val_sliding` in other ways (e.g.
