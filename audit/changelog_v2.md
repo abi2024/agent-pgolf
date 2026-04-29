@@ -106,3 +106,13 @@ bytes; the mixture's gate legality (an outcome-independent adaptive-λ check)
 was verified separately by @nprime06's review on PR #1795 itself (a target-
 conditioned gate from an earlier commit was flagged and fixed). The audit
 tool does not check gate legality.
+
+## v2.1 addendum — 2026-04-29 — re-check of remaining OBFUSCATED PRs
+
+Re-fetched the three other top-10 OBFUSCATED entries (#1758, #1738, #1771)
+to check whether they had similarly converted to readable source after the
+audit ran on 2026-04-23. They have not. All three remain OBFUSCATED with
+their original wrappers (PRs #1758 and #1738 use the same lzma+exec pattern
+as the original snapshot; PR #1771 uses an lzma+runpy variant). No
+classification changes; the audit's per_pr_v2 entries for these PRs remain
+accurate. Detail in `audit/per_pr_v2/obfuscated_recheck_2026-04-29.md`.
