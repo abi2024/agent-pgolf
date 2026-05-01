@@ -1,140 +1,82 @@
-# pgolf-agent
+# agent-pgolf
 
-Disciplined experiment pipeline for [OpenAI's Parameter Golf](https://github.com/openai/parameter-golf) competition. Operated by Claude Code via skills and hooks.
+This repo contains two related artifacts from a seven-day sprint inside [OpenAI's Parameter Golf](https://github.com/openai/parameter-golf) competition (April 2026):
 
-## What this is
+1. **A measurement-integrity audit tool** for the competition's BPB byte-count look-up table. Static-analysis classifier that verifies whether a candidate `train_gpt.py` matches the canonical PR #1727 reference implementation, plus five empirical validation runs that bound the audit's reproduction of the disclosed bug. Documented under `audit/`.
 
-A project structure that makes Claude Code a reliable Parameter Golf researcher:
+2. **A disciplined-experimentation scaffold** for competing in Parameter Golf, built around Claude Code skills, slash-commands, and budget hooks. Documented in `AGENTS.md`, `WORKFLOW.md`, `scripts/pgolf.py`. The audit was built using this scaffold.
 
-- **AGENTS.md** — Operating instructions (the "system prompt")
-- **WORKFLOW.md** — Operator's guide with the exact 7-day workflow
-- **.claude/commands/** — Eight slash-commands: `/morning`, `/plan-experiment`, `/run-experiment`, `/analyze-results`, `/synthesize`, `/blog`, `/checkpoint`, `/submit-check`
-- **.claude/hooks/** — Bash hooks that enforce budget and require confirmation for expensive runs
-- **scripts/pgolf.py** — CLI toolkit: tracking, parsing, spending, leaderboard, submission validation, reports, doctor
-- **knowledge/** — Technique catalog, SOTA timeline, lessons learned, research framing guide
-- **state/** — Mutable truth: spending ledger, cached leaderboard
+For the methodology essay describing what was learned: [link to synthesis when published].
 
-**New: read `WORKFLOW.md` first.** It contains the exact 7-day workflow and how to operate the scaffold day-by-day.
-
-## Quick start
+## Audit quickstart
 
 ```bash
-# 1. Unpack the tarball into a new repo
-tar -xzf pgolf-agent.tar.gz
-cd pgolf-agent
+git clone https://github.com/abi2024/agent-pgolf.git
+cd agent-pgolf
 
-# 2. Make hooks executable (may be needed depending on how you unpacked)
-chmod +x .claude/hooks/*.sh
+# Install dependencies
+pip install -e .
+# or if pyproject.toml doesn't include the audit deps:
+pip install sentencepiece numpy
 
-# 3. Initialize git
-git init && git add -A && git commit -m "initial pgolf-agent setup"
-
-# 4. Run local validation — does NOT touch GPUs, does NOT cost money
-python scripts/validate_workflow.py
-
-# 5. Install optional dependencies
-pip install scipy   # for Welch's t-test p-values (the script works without, but only prints means/stds)
-
-# 6. Fetch current leaderboard
-python scripts/pgolf.py leaderboard fetch
-
-# 7. Clone the competition repo alongside
-git clone https://github.com/openai/parameter-golf.git
-
-# 8. Check state
-python scripts/pgolf.py status
+# Run the audit tool against any train_gpt.py
+python3 scripts/canonical_rescore.py \
+    --train-script /path/to/train_gpt.py \
+    --tokenizer /path/to/sentencepiece.model \
+    --val /path/to/val.bin
 ```
 
-If validation passes, you can start using the skills in Claude Code:
+The tool returns a JSON report classifying the LUT as `CORRECT`, `BUGGY` (with detected bug names), or `OBFUSCATED`, plus the buggy/canonical inflation ratio on the supplied val.
 
-```
-> Read AGENTS.md. Then run /morning.
-```
+See `scripts/README_canonical_rescore.md` for full usage and `audit/methodology.md` for what the tool checks and why.
 
-## What's enforced vs. what's guidance
+## Audit artifacts
 
-**Enforced by code** (the pipeline refuses to proceed if violated):
-- Budget exceeded → pre-bash hook blocks torchrun
-- 8×H100 without `PGOLF_CONFIRM_8XH100=1` → pre-bash hook blocks
-- Missing `MAX_WALLCLOCK_SECONDS` → pre-bash hook blocks
-- Known technique conflict per `lessons_learned.md` → `track create` refuses without `--force`
-- Missing reproducibility fields, artifact > 16MB, GPU type wrong, seeds < 3 → `submit-check` fails
+- `scripts/canonical_rescore.py` — the audit tool
+- `audit/methodology.md` — what the tool checks; structural-vs-empirical distinction
+- `audit/writeup.md` — top-10 PR classifications (snapshot)
+- `audit/changelog_v2.md` — version history including v2.1 frontier update
+- `audit/empirical_validation/` — five validation runs with summaries
+- `audit/per_pr_v2/` — per-PR classifications
 
-**Guidance** (documented but not enforced):
-- When to use 1×A100 vs 1×H100 vs 8×H100
-- When to write a non-record PR vs a full blog post
-- How to phrase a hypothesis
+The audit was submitted to `openai/parameter-golf` as [PR #1804](https://github.com/openai/parameter-golf/pull/1804).
 
-## Validation before touching GPUs
+## Worked example
 
-Run `python scripts/validate_workflow.py` locally. It exercises the full pipeline with fake experiments and fake logs so you can verify everything works before spending a dollar on GPUs. See **VALIDATION.md** for what it checks and manual steps that complement it.
+Running the audit on the canonical reference (PR #1727) returns:
 
-## Directory structure
-
-```
-pgolf-agent/
-├── AGENTS.md              ← Operating instructions
-├── CLAUDE.md              ← Command cheat sheet
-├── ARCHITECTURE.md        ← Design decisions
-├── TEMPLATE.md            ← Experiment analysis template
-├── VALIDATION.md          ← Local checks before GPU use
-├── README.md              ← You are here
-│
-├── .claude/
-│   ├── settings.json
-│   ├── skills/            (morning, plan-experiment, run-experiment,
-│   │                       analyze-results, blog, checkpoint, submit-check)
-│   └── hooks/             (pre-bash.sh, post-bash.sh)
-│
-├── scripts/
-│   ├── pgolf.py           ← Main CLI
-│   ├── fetch_leaderboard.py
-│   ├── dashboard.py       (streamlit, optional)
-│   ├── runpod_setup.py
-│   └── validate_workflow.py
-│
-├── knowledge/
-│   ├── techniques/        (depth_recurrence, qat, ttt, sentencepiece, ...)
-│   ├── papers/
-│   ├── sota_timeline.md
-│   ├── lessons_learned.md
-│   └── learning_path.md
-│
-├── experiments/           ← One folder per experiment
-├── blog/drafts|published/
-├── state/                 ← spending.jsonl, leaderboard.json
-├── journal/               ← Daily checkpoint entries
-│
-├── tests/                 ← pytest suite
-│   ├── test_parser.py
-│   ├── test_hooks.py
-│   ├── test_cli.py
-│   ├── test_spending.py
-│   └── fixtures/
-│
-└── pgolf.db               ← SQLite
+```json
+{
+  "lut_status": "CORRECT",
+  "lut_bug_detections": [],
+  "leading_space_noplus": true,
+  "byte_token_one": true,
+  "boundary_predicate_full": true,
+  "canonical_ratio": 1.1671413
+}
 ```
 
-## Dependencies
+Running it on yahya010's PR #1734 (the disclosed-bug PR) returns:
 
-**Required**: Python 3.11+ (stdlib only for core CLI)
+```json
+{
+  "lut_status": "BUGGY",
+  "lut_bug_detections": [
+    "leading_space_plus_one",
+    "byte_token_wrong_size",
+    "missing_is_unused"
+  ],
+  "leading_space_noplus": false,
+  "byte_token_one": false,
+  "boundary_predicate_full": false,
+  "yahya_ratio_on_sp8192": 1.1655009
+}
+```
 
-**Optional**:
-- `scipy` — for p-value calculation in statistical comparisons
-- `streamlit`, `pandas` — for the dashboard
-- `pytest` — for the test suite
+(Note: only `byte_token_wrong_size` produces measurable inflation on SP8192 — the other two are structural deviations that happen to be empirically zero on this val. See `audit/methodology.md` and `audit/empirical_validation/run5_summary.md`.)
 
-## Integrating with existing work
+---
 
-If you already have 19 experiments in a separate repo, you can migrate the state:
+## Experimentation scaffold (original purpose of this repo)
 
-1. Copy your existing `experiments/` folder into this structure
-2. Re-enter experiments into the new schema via `pgolf track create` (or import by hand)
-3. Record seeds via `pgolf track result ... --seed N`
-4. Run `python scripts/pgolf.py leaderboard fetch` to populate `state/leaderboard.json`
-
-The new pre-registration requirement is forward-looking — you can't retroactively pre-register thresholds on existing experiments. Just use it for new experiments going forward.
-
-## License
-
-MIT
+[The original README content lives below this divider, lightly edited]
