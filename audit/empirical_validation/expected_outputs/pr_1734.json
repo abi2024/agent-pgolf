@@ -1,0 +1,28 @@
+{
+  "pr_number": 1734,
+  "script_path": "/workspace/parameter-golf/records/track_10min_16mb/2026-04-19_GatedDeltaNet_MacroPhase_Brotli_LegalTTT/train_gdn_7k.py",
+  "lut_status": "BUGGY",
+  "lut_bug_detections": [
+    "leading_space_plus_one",
+    "missing_is_unused"
+  ],
+  "detected_bugs_description": "Bakes +1 into LUT for leading-space tokens, causing eval_val_sliding to double-count the leading-space byte (#1698 lineage bug).; Boundary predicate omits sp.is_unused; unused tokens are scored as if they contributed bytes instead of being treated as zero-byte boundaries.",
+  "inflation_ratio_includes": [
+    "leading_space_plus_one"
+  ],
+  "reported_bpb": 1.0108,
+  "inflation_ratio": 1.1671413031314464,
+  "computed_inflation_ratio": 1.1671413031314464,
+  "inferred_canonical_bpb": 1.179746429205266,
+  "passes_merged_sota_threshold": false,
+  "merged_sota_threshold": 1.0738,
+  "seq_len": 2048,
+  "stride": 64,
+  "scoring_mode": "sliding-window-boundary-masked",
+  "canonical_byte_count": 151080891,
+  "buggy_byte_count": 176332748,
+  "leading_space_token_count": 25251857,
+  "scored_token_count": 40540802,
+  "num_windows": 633420,
+  "notes": "inflation_ratio accounts only for leading_space_plus_one; additional deviations present (missing_is_unused) would increase the canonical correction further \u2014 the reported inferred_canonical_bpb is therefore conservative (an underestimate of the true canonical BPB)."
+}
